@@ -157,9 +157,11 @@
 				<p class="text-neutral-500 font-bold text-lg">Meja kosong. Pemain pertama mulai.</p>
 			{:else}
 				{#each boardLayout as tile (tile.id)}
+					{@const offsetX = tile.isBalak ? TILE_H / 2 : TILE_W / 2}
+					{@const offsetY = tile.isBalak ? TILE_W / 2 : TILE_H / 2}
 					<div
 						class="absolute transition-all duration-500 ease-out"
-						style="transform: translate({tile.x}px, {tile.y}px) rotate({tile.rotation}deg);"
+						style="transform: translate({tile.x - offsetX}px, {tile.y - offsetY}px) rotate({tile.rotation}deg);"
 					>
 						{@render DominoTile(tile, false)}
 					</div>

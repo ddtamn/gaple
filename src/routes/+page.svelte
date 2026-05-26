@@ -162,7 +162,7 @@
 					{@const offsetY = isRotated ? TILE_W / 2 : TILE_H / 2}
 					<div
 						class="absolute transition-all duration-500 ease-out"
-						style="transform: translate({tile.x - offsetX}px, {tile.y - offsetY}px) rotate({tile.rotation}deg);"
+						style="left: 50%; top: 50%; width: {TILE_W}px; height: {TILE_H}px; margin-left: {tile.x - offsetX}px; margin-top: {tile.y - offsetY}px; transform: translate(-50%, -50%) rotate({tile.rotation}deg);"
 					>
 						{@render DominoTile(tile, false)}
 					</div>

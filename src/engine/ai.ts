@@ -7,6 +7,7 @@ import { scoreTacticalMove, summarizeMove } from './ai/heuristics';
 import { playout } from './ai/playout';
 import { biasTileWeights, createBelief } from './ai/belief';
 import { estimateHiddenHandWeight } from './ai/inference';
+import { shouldUseEndgameSolver, solveEndgameMove } from './ai/endgame';
 
 const ITERATIONS_PER_MOVE = 140;
 const MAX_PLAYOUT_TURNS = 120;
@@ -94,6 +95,12 @@ export function selectAiMove(
 
 	if (legalMoves.length === 0) return null;
 	if (legalMoves.length === 1) return legalMoves[0];
+	if (shouldUseEndgameSolver(state, playerId)) {
+		const endgameMove = solveEndgameMove(state, playerId);
+		if (endgameMove) {
+			return endgameMove;
+		}
+	}
 
 	let bestMove = legalMoves[0];
 	let highestScore = Number.NEGATIVE_INFINITY;

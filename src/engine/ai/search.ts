@@ -43,7 +43,12 @@ function applyMove(state: GameState, move: Move): GameState {
 	return simManager.state;
 }
 
-function rolloutValue(state: GameState, playerId: string, maxPlayoutTurns: number, rng: ReturnType<typeof createSeededRng>): number {
+function rolloutValue(
+	state: GameState,
+	playerId: string,
+	maxPlayoutTurns: number,
+	rng: ReturnType<typeof createSeededRng>
+): number {
 	const simManager = new GameManager(state.players.map((player) => player.name));
 	simManager.state = state;
 
@@ -66,17 +71,24 @@ function rolloutValue(state: GameState, playerId: string, maxPlayoutTurns: numbe
 	return playout(simManager.state, playerId, rng, maxPlayoutTurns);
 }
 
-function selectChild(node: MctsNode, exploration: number, rng: ReturnType<typeof createSeededRng>): MctsNode {
+function selectChild(
+	node: MctsNode,
+	exploration: number,
+	rng: ReturnType<typeof createSeededRng>
+): MctsNode {
 	const logParent = Math.log(Math.max(1, node.visits));
-	return node.children.reduce((best, child) => {
-		const exploitation = child.totalValue / Math.max(1, child.visits);
-		const explorationTerm = exploration * Math.sqrt(logParent / Math.max(1, child.visits));
-		const score = exploitation + explorationTerm + (rng.next() * 0.01);
-		if (!best || score > best.score) {
-			return { node: child, score };
-		}
-		return best;
-	}, null as null | { node: MctsNode; score: number }).node;
+	return node.children.reduce(
+		(best, child) => {
+			const exploitation = child.totalValue / Math.max(1, child.visits);
+			const explorationTerm = exploration * Math.sqrt(logParent / Math.max(1, child.visits));
+			const score = exploitation + explorationTerm + rng.next() * 0.01;
+			if (!best || score > best.score) {
+				return { node: child, score };
+			}
+			return best;
+		},
+		null as null | { node: MctsNode; score: number }
+	).node;
 }
 
 export function runMctsSearch(
@@ -98,7 +110,10 @@ export function runMctsSearch(
 		}
 
 		if (node.untriedMoves.length > 0) {
-			const move = node.untriedMoves.splice(Math.floor(rng.next() * node.untriedMoves.length), 1)[0];
+			const move = node.untriedMoves.splice(
+				Math.floor(rng.next() * node.untriedMoves.length),
+				1
+			)[0];
 			const nextState = applyMove(node.state, move);
 			const child = createNode(nextState, node, move);
 			node.children.push(child);
@@ -118,12 +133,15 @@ export function runMctsSearch(
 		return null;
 	}
 
-	const bestChild = root.children.reduce((best, child) => {
-		if (child.visits > best.visits) {
-			return child;
-		}
-		return best;
-	}, root.children[0] ?? createNode(state, null, legalMoves[0]));
+	const bestChild = root.children.reduce(
+		(best, child) => {
+			if (child.visits > best.visits) {
+				return child;
+			}
+			return best;
+		},
+		root.children[0] ?? createNode(state, null, legalMoves[0])
+	);
 
 	return bestChild.move ?? legalMoves[0];
 }

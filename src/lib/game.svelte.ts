@@ -61,12 +61,33 @@ export class SvelteGameManager {
 
 	private runBotTurn() {
 		const currentPlayer = this.engine.currentPlayer;
-		const move = selectAiMove(this.state, currentPlayer.id);
-		if (move) {
-			this.nextTurn(move.playerId, move.tileId, move.side);
-		} else {
-			this.engine.passTurn(currentPlayer.id);
-			this.syncState();
+		try {
+			// Panggil AI Monte Carlo
+			const move = selectAiMove(this.state, currentPlayer.id);
+			
+			if (move) {
+				// Coba pasang batu ke sisi yang dipilih AI
+				let success = this.nextTurn(move.playerId, move.tileId, move.side);
+				
+				// JIKA DITOLAK: Berarti sisi-nya terbalik! Coba pasang ke sisi sebelahnya.
+				if (!success) {
+					const otherSide = move.side === 'left' ? 'right' : 'left';
+					success = this.nextTurn(move.playerId, move.tileId, otherSide);
+				}
+				
+				// JIKA MASIH DITOLAK: Berarti batunya benar-benar tidak valid. Paksa Pass agar tidak macet.
+				if (!success) {
+					console.warn('AI mencoba langkah tidak valid, memaksa Pass.');
+					this.passTurn(currentPlayer.id);
+				}
+			} else {
+				// Jika AI mengembalikan null, berarti tidak ada kartu yang bisa jalan
+				this.passTurn(currentPlayer.id);
+			}
+		} catch (e) {
+			console.error("AI Error:", e);
+			// Fallback aman: Jika otak AI error, paksa Pass agar UI pemain tidak freeze
+			this.passTurn(currentPlayer.id);
 		}
 	}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { SvelteGameManager } from '$lib/game.svelte';
+	import { calculateBoardLayout } from '../engine/boardLayout';
+	import type { Domino } from '../engine/types';
 
 	const dotPatterns: Record<number, number[]> = {
 		0: [0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -12,104 +13,137 @@
 		6: [1, 0, 1, 1, 0, 1, 1, 0, 1]
 	};
 
-	// Gunakan SvelteGameManager (Wrapper)
+	const TILE_W = 112;
+	const TILE_H = 56;
+	const GAP = 4;
+
 	const game = new SvelteGameManager(['Pemain Bawah', 'Pemain Kanan', 'Pemain Atas', 'Pemain Kiri']);
 	game.startGame();
+	game.setBotPlayers(['1', '2', '3']);
 
-	onMount(() => {
-		const botIds = game.state.players.slice(1).map((player) => player.id);
-		game.setBotPlayers(botIds);
-	});
+	// ── Interaction state ──────────────────────────────────────────────────────
+	// Supports both drag-and-drop AND click-to-select + click-to-place.
+	let draggedTile: Domino | null = $state(null);
+	let selectedTile: Domino | null = $state(null);   // click-to-select mode
+	let mouseX = $state(0);
+	let mouseY = $state(0);
+	let dropZoneHovered: 'left' | 'right' | 'center' | null = $state(null);
 
-	// Konstanta Dimensi Kartu (Berdasarkan class w-28 h-14)
-	const TILE_W = 112; // Lebar normal (Horizontal)
-	const TILE_H = 56; // Tinggi normal
-	const GAP = 8; // Jarak antar kartu
-	const LIMIT = 350; // Batas X (pixel) dari tengah sebelum kartu berbelok ke bawah
+	// Active tile = whichever is currently being dragged or selected.
+	const activeTile = $derived(draggedTile ?? selectedTile);
+	const isDragging  = $derived(draggedTile !== null);
+	// Show drop zones whenever there is an active tile and it's player 0's turn.
+	const showDropZones = $derived(activeTile !== null && game.state.turnIndex === 0);
 
-	// Svelte 5: Otomatis menghitung ulang koordinat setiap kali meja berubah!
+	function onWindowMouseMove(e: MouseEvent) {
+		mouseX = e.clientX;
+		mouseY = e.clientY;
+	}
+	// Release anywhere outside a drop zone cancels the drag (not the selection).
+	function onWindowMouseUp() {
+		draggedTile = null;
+		dropZoneHovered = null;
+	}
+
+	function placeTile(side: 'left' | 'right') {
+		if (!activeTile) return;
+		game.nextTurn(game.state.players[0].id, activeTile.id, side);
+		draggedTile  = null;
+		selectedTile = null;
+		dropZoneHovered = null;
+	}
+
+	// ── Board Layout ───────────────────────────────────────────────────────────
 	let boardLayout = $derived.by(() => {
 		const tiles = game.state.board.playedTiles;
 		if (!tiles || tiles.length === 0) return [];
-
-		const layout = [];
-		let x = 0;
-		let y = 0;
-		let direction = 'RIGHT'; // Awal mulai jalan ke Kanan
-
-		// Kita susun dari ujung kiri ke ujung kanan
-		for (let i = 0; i < tiles.length; i++) {
-			const tile = tiles[i];
-			const isBalak = tile.left === tile.right;
-
-			// Tentukan Dimensi Fisik kartu saat ini berdasarkan Arah (Direction)
-			// Jika turun/naik, kartu diputar sehingga lebarnya jadi tinggi, tingginya jadi lebar
-			let currentWidth = isBalak ? TILE_H : TILE_W;
-			let currentHeight = isBalak ? TILE_W : TILE_H;
-			if (direction === 'DOWN' || direction === 'UP') {
-				currentWidth = isBalak ? TILE_W : TILE_H;
-				currentHeight = isBalak ? TILE_H : TILE_W;
-			}
-
-			// Geser koordinat sebelum menaruh kartu (Kecuali kartu pertama)
-			if (i > 0) {
-				const prevTile = layout[i - 1];
-
-				let prevWidth = prevTile.isBalak ? TILE_H : TILE_W;
-				let prevHeight = prevTile.isBalak ? TILE_W : TILE_H;
-				if (prevTile.direction === 'DOWN' || prevTile.direction === 'UP') {
-					prevWidth = prevTile.isBalak ? TILE_W : TILE_H;
-					prevHeight = prevTile.isBalak ? TILE_H : TILE_W;
-				}
-
-				// Menghitung jarak antar titik tengah (center-to-center)
-				if (direction === 'RIGHT') {
-					x += (prevWidth / 2) + (currentWidth / 2) + GAP;
-					if (x > LIMIT) direction = 'DOWN'; // Terlalu ke kanan? Belok Bawah
-				} else if (direction === 'LEFT') {
-					x -= (prevWidth / 2) + (currentWidth / 2) + GAP;
-					if (x < -LIMIT) direction = 'DOWN'; // Terlalu ke kiri? Belok Bawah
-				} else if (direction === 'DOWN') {
-					y += (prevHeight / 2) + (currentHeight / 2) + GAP;
-					direction = x > 0 ? 'LEFT' : 'RIGHT'; // Habis belok bawah, pantulkan ke tengah
-				}
-			}
-
-			// Tentukan Derajat Rotasi CSS
-			let rotation = 0;
-			if (direction === 'RIGHT') rotation = isBalak ? 90 : 0;
-			else if (direction === 'DOWN') rotation = isBalak ? 0 : 90;
-			else if (direction === 'LEFT') rotation = isBalak ? 90 : 180; // 180 agar angka tetap nyambung
-
-			layout.push({ ...tile, x, y, rotation, isBalak, direction });
-		}
-
-		// --- AUTO CENTERING (Fokus Kamera) ---
-		// Cari titik tengah dari seluruh kartu yang ada,
-		// lalu geser semuanya agar meja selalu seimbang di tengah layar
-		const minX = Math.min(...layout.map((t) => t.x));
-		const maxX = Math.max(...layout.map((t) => t.x));
-		const minY = Math.min(...layout.map((t) => t.y));
-		const maxY = Math.max(...layout.map((t) => t.y));
-
-		const centerX = (minX + maxX) / 2;
-		const centerY = (minY + maxY) / 2;
-
-		return layout.map((t) => ({
-			...t,
-			x: t.x - centerX,
-			y: t.y - centerY
-		}));
+		return calculateBoardLayout(tiles, game.state.board.initialTileIndex, TILE_W, TILE_H, GAP);
 	});
 </script>
 
+<svelte:window onmousemove={onWindowMouseMove} onmouseup={onWindowMouseUp} />
+
+<!-- ── Ghost tile follows cursor while dragging ──────────────────────────── -->
+{#if isDragging && draggedTile}
+	<div
+		class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rotate-3 scale-110 opacity-80 drop-shadow-2xl"
+		style="left:{mouseX}px; top:{mouseY}px;"
+	>
+		{@render DominoTile(draggedTile, false)}
+	</div>
+{/if}
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     DROP ZONES — placed directly on the root so they share the same stacking
+     context as the player hands (z-50 beats z-10 reliably).
+     ───────────────────────────────────────────────────────────────────────── -->
+{#if showDropZones && game.state.board.playedTiles.length > 0}
+	<!-- LEFT -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed left-0 top-1/2 z-50 flex h-72 w-24 -translate-y-1/2 cursor-copy
+			flex-col items-center justify-center gap-2 transition-colors
+			{dropZoneHovered === 'left'
+				? 'border-4 border-green-300 bg-green-500/50'
+				: 'border-4 border-green-500/40 bg-green-500/15'}"
+		onmouseenter={() => (dropZoneHovered = 'left')}
+		onmouseleave={() => (dropZoneHovered = null)}
+		onmouseup={() => placeTile('left')}
+		onclick={() => placeTile('left')}
+	>
+		<span class="text-2xl text-green-300">←</span>
+		<span class="text-xs font-bold text-green-300">KIRI</span>
+	</div>
+
+	<!-- RIGHT -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed right-0 top-1/2 z-50 flex h-72 w-24 -translate-y-1/2 cursor-copy
+			flex-col items-center justify-center gap-2 transition-colors
+			{dropZoneHovered === 'right'
+				? 'border-4 border-green-300 bg-green-500/50'
+				: 'border-4 border-green-500/40 bg-green-500/15'}"
+		onmouseenter={() => (dropZoneHovered = 'right')}
+		onmouseleave={() => (dropZoneHovered = null)}
+		onmouseup={() => placeTile('right')}
+		onclick={() => placeTile('right')}
+	>
+		<span class="text-2xl text-green-300">→</span>
+		<span class="text-xs font-bold text-green-300">KANAN</span>
+	</div>
+{/if}
+
+<!-- CENTER — first tile on empty board -->
+{#if showDropZones && game.state.board.playedTiles.length === 0}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="pointer-events-none fixed inset-0 z-40 flex items-center justify-center"
+	>
+		<div
+			class="pointer-events-auto flex h-64 w-96 cursor-copy flex-col items-center
+				justify-center gap-3 rounded-2xl transition-colors
+				{dropZoneHovered === 'center'
+					? 'border-4 border-green-300 bg-green-500/50'
+					: 'border-4 border-green-400 bg-green-500/20'}"
+			onmouseenter={() => (dropZoneHovered = 'center')}
+			onmouseleave={() => (dropZoneHovered = null)}
+			onmouseup={() => placeTile('right')}
+			onclick={() => placeTile('right')}
+		>
+			<span class="text-4xl text-green-300">+</span>
+			<span class="text-base font-bold text-green-300">Letakkan Kartu Pertama</span>
+		</div>
+	</div>
+{/if}
+
+<!-- ── DominoTile snippet ─────────────────────────────────────────────────── -->
 {#snippet DominoTile(tile: { left: number; right: number }, isVertical: boolean)}
 	<div
-		class="flex overflow-hidden rounded-xl bg-neutral-200 shadow-md transition-transform {isVertical
-			? 'flex-col h-28 w-14'
-			: 'flex-row h-14 w-28'}"
+		class="flex overflow-hidden rounded-xl bg-neutral-200 shadow-md
+			{isVertical ? 'h-28 w-14 flex-col' : 'h-14 w-28 flex-row'}"
 	>
-		<div class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2 {!isVertical ? 'rotate-90' : ''}">
+		<div class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2
+			{!isVertical ? 'rotate-90' : ''}">
 			{#each dotPatterns[tile.left] as hasDot, j (j)}
 				<div class="h-2 w-2 rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'}"></div>
 			{/each}
@@ -117,7 +151,8 @@
 		<div class="flex items-center justify-center {isVertical ? 'h-px w-full' : 'h-full w-px'}">
 			<div class="{isVertical ? 'h-full w-[70%]' : 'h-[70%] w-full'} bg-red-700/25"></div>
 		</div>
-		<div class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2 {!isVertical ? 'rotate-90' : ''}">
+		<div class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2
+			{!isVertical ? 'rotate-90' : ''}">
 			{#each dotPatterns[tile.right] as hasDot, j (j)}
 				<div class="h-2 w-2 rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'}"></div>
 			{/each}
@@ -125,66 +160,110 @@
 	</div>
 {/snippet}
 
+<!-- ── PlayerHand snippet ────────────────────────────────────────────────── -->
 {#snippet PlayerHand(index: number)}
-	{@const isVertical = index === 0 || index === 2}
+	<!-- index 0 (bottom) and 2 (top) display tiles vertically (portrait).
+	     index 1 (right) and 3 (left) display tiles horizontally (landscape). -->
+	{@const isHandVertical = index === 0 || index === 2}
 	{@const player = game.state.players[index]}
-	
+	{@const isMyTurn = game.state.turnIndex === index}
+
 	{#each player.hand as tile (tile.id)}
+		{@const isActive = activeTile?.id === tile.id}
 		<button
-			disabled={index !== 0 || game.state.turnIndex !== index}
-			onclick={() => {
-				// Coba mainkan ke kanan, kalau tidak bisa, sistem akan menolak 
-				// (Nanti UI bisa dibuat lebih canggih dengan drag-and-drop / pilih sisi)
-				game.nextTurn(player.id, tile.id, 'right') || game.nextTurn(player.id, tile.id, 'left');
+			disabled={!isMyTurn}
+			class="flex cursor-pointer select-none transition-all duration-150
+				{isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
+				{isMyTurn ? 'opacity-100' : 'opacity-55'}
+				{isActive ? 'scale-90 opacity-30' : ''}
+				{isMyTurn && !isActive && selectedTile === null ? 'ring-0' : ''}
+				{isMyTurn && selectedTile !== null && !isActive ? 'ring-2 ring-white/20 rounded-xl' : ''}
+			"
+			onmousedown={(e) => {
+				if (!isMyTurn) return;
+				e.preventDefault();
+				// Start a drag. Clicking without dragging also triggers the tile
+				// selection (handled in onclick below).
+				draggedTile = tile;
+				selectedTile = null;
+				mouseX = e.clientX;
+				mouseY = e.clientY;
 			}}
-			class="flex cursor-pointer transition-transform {isVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'} 
-                   {index === 0 && game.state.turnIndex === index ? 'opacity-100 ring-2 ring-yellow-400 rounded-xl' : 'opacity-50 pointer-events-none'}"
+			onclick={(e) => {
+				if (!isMyTurn) return;
+				e.stopPropagation();
+				// Toggle selection for click-to-place flow.
+				if (selectedTile?.id === tile.id) {
+					selectedTile = null;
+				} else {
+					selectedTile = tile;
+					draggedTile  = null;
+				}
+			}}
 		>
-			{@render DominoTile(tile, isVertical)}
+			{@render DominoTile(tile, isHandVertical)}
 		</button>
 	{/each}
 {/snippet}
 
-<div class="relative flex h-screen w-full items-center justify-center bg-neutral-900 text-white">
-	
-	<div class="absolute top-4 left-4 z-10 text-sm">
-		<p class="font-bold text-yellow-400">Giliran: {game.state.players[game.state.turnIndex].name}</p>
-		<button 
-			class="mt-2 bg-neutral-700 px-3 py-1 rounded hover:bg-neutral-600 disabled:opacity-50"
-			disabled={game.state.turnIndex !== 0}
-			onclick={() => game.passTurn(game.state.players[0].id)}
+<!-- ── Root layout ────────────────────────────────────────────────────────── -->
+<div
+	class="relative flex h-screen w-full select-none items-center justify-center overflow-hidden bg-neutral-900 text-white"
+	onclick={() => { selectedTile = null; }} 
+>
+	<!-- HUD -->
+	<div class="absolute left-6 top-6 z-20 flex flex-col items-start gap-2 text-sm">
+		<p class="font-bold text-yellow-400">
+			Giliran: {game.state.players[game.state.turnIndex].name}
+		</p>
+		{#if selectedTile}
+			<p class="rounded bg-green-800/60 px-3 py-1 text-xs text-green-300">
+				Kartu dipilih — klik ← / → untuk menempatkan
+			</p>
+		{/if}
+		<button
+			class="rounded bg-neutral-700 px-3 py-2 transition hover:bg-neutral-600 active:scale-95"
+			onclick={(e) => {
+				e.stopPropagation();
+				game.passTurn(game.state.players[game.state.turnIndex].id);
+			}}
 		>
 			Lewati Giliran (Pass)
 		</button>
 	</div>
 
-	<div class="flex flex-wrap items-center justify-center gap-1 p-10 z-0">
-		<div class="relative flex h-[500px] w-full max-w-[900px] items-center justify-center overflow-hidden rounded-3xl bg-green-950/30 ring-2 ring-green-900 shadow-inner">
+	<!-- Board -->
+	<div class="absolute inset-0 z-0 flex items-center justify-center p-20">
+		<div
+			class="relative flex h-[500px] w-full max-w-[900px] items-center justify-center
+				overflow-visible rounded-3xl bg-green-950/30 p-10 shadow-inner ring-2 ring-green-900"
+		>
 			{#if game.state.board.playedTiles.length === 0}
-				<p class="text-neutral-500 font-bold text-lg">Meja kosong. Pemain pertama mulai.</p>
+				<p class="text-lg font-bold text-neutral-500">Meja kosong. Pemain pertama mulai.</p>
 			{:else}
 				{#each boardLayout as tile (tile.id)}
-					{@const isRotated = tile.rotation === 90 || tile.rotation === 270}
-					{@const offsetX = isRotated ? TILE_H / 2 : TILE_W / 2}
-					{@const offsetY = isRotated ? TILE_W / 2 : TILE_H / 2}
+					{@const isVertical = tile.rotation % 180 !== 0}
+					{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
 					<div
 						class="absolute transition-all duration-500 ease-out"
-						style="left: 50%; top: 50%; width: {TILE_W}px; height: {TILE_H}px; margin-left: {tile.x - offsetX}px; margin-top: {tile.y - offsetY}px; transform: translate(-50%, -50%) rotate({tile.rotation}deg);"
+						style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
 					>
-						{@render DominoTile(tile, false)}
+						{@render DominoTile(tile, isVertical)}
 					</div>
 				{/each}
 			{/if}
 		</div>
 	</div>
 
+	<!-- Player Hands -->
 	{#each game.state.players as player, i (player.id)}
 		<div
-			class="absolute flex gap-2 z-10
-				{i === 0 ? 'bottom-4 left-1/2 -translate-x-1/2 flex-row' : 
-				 i === 1 ? 'top-1/2 right-4 -translate-y-1/2 flex-col-reverse' : 
-				 i === 2 ? 'top-4 left-1/2 -translate-x-1/2 flex-row' : 
-				 'top-1/2 left-4 -translate-y-1/2 flex-col'}"
+			class="absolute z-10 flex gap-2 rounded-2xl bg-black/40 p-3 shadow-lg
+				backdrop-blur-sm ring-1 ring-white/10
+				{i === 0 ? 'bottom-8 left-1/2 -translate-x-1/2 flex-row'       :
+				 i === 1 ? 'right-8 top-1/2 -translate-y-1/2 flex-col-reverse' :
+				 i === 2 ? 'top-8 left-1/2 -translate-x-1/2 flex-row'          :
+				           'left-8 top-1/2 -translate-y-1/2 flex-col'}"
 		>
 			{@render PlayerHand(i)}
 		</div>

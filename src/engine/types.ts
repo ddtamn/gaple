@@ -18,6 +18,7 @@ export interface Board {
 	playedTiles: Domino[];
 	leftEnd: number | null;
 	rightEnd: number | null;
+	initialTileIndex: number; // Track position of first tile (shifts when left tiles added)
 }
 
 export interface Move {

@@ -5,7 +5,8 @@ export function createBoard(): Board {
 	return {
 		playedTiles: [],
 		leftEnd: null,
-		rightEnd: null
+		rightEnd: null,
+		initialTileIndex: 0
 	};
 }
 
@@ -52,14 +53,17 @@ export function playTile(board: Board, tile: Domino, side: Side): Board | null {
 	const playedTiles = [...board.playedTiles];
 	let leftEnd = board.leftEnd;
 	let rightEnd = board.rightEnd;
+	let initialTileIndex = board.initialTileIndex;
 
 	if (playedTiles.length === 0) {
 		playedTiles.push(placedTile);
 		leftEnd = placedTile.left;
 		rightEnd = placedTile.right;
+		initialTileIndex = 0;
 	} else if (side === 'left') {
 		playedTiles.unshift(placedTile);
 		leftEnd = placedTile.left;
+		initialTileIndex++; // Shift initial index when prepending
 	} else {
 		playedTiles.push(placedTile);
 		rightEnd = placedTile.right;
@@ -68,6 +72,7 @@ export function playTile(board: Board, tile: Domino, side: Side): Board | null {
 	return {
 		playedTiles,
 		leftEnd,
-		rightEnd
+		rightEnd,
+		initialTileIndex
 	};
 }

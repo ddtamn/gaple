@@ -78,6 +78,8 @@ export class GameManager {
 	}
 
 	startGame() {
+		// Buat seed acak baru setiap kali game di-restart
+		this.seed = Math.random().toString(36).substring(2, 10);
 		this.state = createGameState(this.players.map((player) => player.name), this.seed);
 	}
 
@@ -102,21 +104,27 @@ export class GameManager {
 			return false;
 		}
 
-		currentPlayer.hand = result.hand;
+		// PERBAIKAN 1: Buat array players baru tanpa memutasi yang lama
+		const newPlayers = this.state.players.map(p => 
+			p.id === currentPlayer.id ? { ...p, hand: result.hand } : p
+		);
+
+		// Cek apakah game selesai (kartu habis)
+		const isFinished = result.hand.length === 0;
+
 		this.state = {
 			...this.state,
+			players: newPlayers, // Masukkan players baru
 			board: placedBoard,
 			history: [...this.state.history, move],
-			events: [...this.state.events, createMoveEvent(move)],
-			turnIndex: (this.state.turnIndex + 1) % this.players.length
+			events: [
+				...this.state.events, 
+				createMoveEvent(move),
+				...(isFinished ? [createGameOverEvent(currentPlayer.id)] : [])
+			],
+			// PERBAIKAN 3: Jika game selesai, jangan pindah giliran agar tidak error (Infinity Loop)
+			turnIndex: isFinished ? this.state.turnIndex : (this.state.turnIndex + 1) % this.players.length
 		};
-
-		if (currentPlayer.hand.length === 0) {
-			this.state = {
-				...this.state,
-				events: [...this.state.events, createGameOverEvent(currentPlayer.id)]
-			};
-		}
 
 		return true;
 	}

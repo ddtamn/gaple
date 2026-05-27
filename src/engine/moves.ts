@@ -41,7 +41,7 @@ export function hasLegalMove(state: GameState, playerId: string): boolean {
 export function createMoveEvent(move: Move) {
 	return {
 		type: 'MOVE_PLAYED' as const,
-		payload: move,
+		payload: move as unknown as Record<string, unknown>,
 		timestamp: Date.now()
 	};
 }

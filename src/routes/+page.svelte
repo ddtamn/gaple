@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { SvelteGameManager } from '$lib/game.svelte';
 
 	const dotPatterns: Record<number, number[]> = {
@@ -14,6 +15,11 @@
 	// Gunakan SvelteGameManager (Wrapper)
 	const game = new SvelteGameManager(['Pemain Bawah', 'Pemain Kanan', 'Pemain Atas', 'Pemain Kiri']);
 	game.startGame();
+
+	onMount(() => {
+		const botIds = game.state.players.slice(1).map((player) => player.id);
+		game.setBotPlayers(botIds);
+	});
 
 	// Konstanta Dimensi Kartu (Berdasarkan class w-28 h-14)
 	const TILE_W = 112; // Lebar normal (Horizontal)
@@ -125,14 +131,14 @@
 	
 	{#each player.hand as tile (tile.id)}
 		<button
-			disabled={game.state.turnIndex !== index}
+			disabled={index !== 0 || game.state.turnIndex !== index}
 			onclick={() => {
 				// Coba mainkan ke kanan, kalau tidak bisa, sistem akan menolak 
 				// (Nanti UI bisa dibuat lebih canggih dengan drag-and-drop / pilih sisi)
 				game.nextTurn(player.id, tile.id, 'right') || game.nextTurn(player.id, tile.id, 'left');
 			}}
 			class="flex cursor-pointer transition-transform {isVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'} 
-                   {game.state.turnIndex === index ? 'opacity-100 ring-2 ring-yellow-400 rounded-xl' : 'opacity-70'}"
+                   {index === 0 && game.state.turnIndex === index ? 'opacity-100 ring-2 ring-yellow-400 rounded-xl' : 'opacity-50 pointer-events-none'}"
 		>
 			{@render DominoTile(tile, isVertical)}
 		</button>
@@ -144,8 +150,9 @@
 	<div class="absolute top-4 left-4 z-10 text-sm">
 		<p class="font-bold text-yellow-400">Giliran: {game.state.players[game.state.turnIndex].name}</p>
 		<button 
-			class="mt-2 bg-neutral-700 px-3 py-1 rounded hover:bg-neutral-600"
-			onclick={() => game.passTurn(game.state.players[game.state.turnIndex].id)}
+			class="mt-2 bg-neutral-700 px-3 py-1 rounded hover:bg-neutral-600 disabled:opacity-50"
+			disabled={game.state.turnIndex !== 0}
+			onclick={() => game.passTurn(game.state.players[0].id)}
 		>
 			Lewati Giliran (Pass)
 		</button>

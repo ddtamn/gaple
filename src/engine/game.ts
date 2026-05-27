@@ -1,4 +1,4 @@
-import type { Domino, GameState, Move, Player } from './types';
+import type { Domino, GameResult, GameState, Move, Player } from './types';
 import { createBoard } from './board';
 import { createDomino } from './domino';
 import { createPlayer, receiveTiles, removeTile } from './player';
@@ -20,6 +20,39 @@ function createPlayers(names: string[]): Player[] {
 	return names.map((name, index) => createPlayer(index.toString(), name));
 }
 
+export function calculateHandScore(player: Player): number {
+	return player.hand.reduce((total, tile) => total + tile.left + tile.right, 0);
+}
+
+function createScores(players: Player[]): Record<string, number> {
+	return Object.fromEntries(players.map((player) => [player.id, calculateHandScore(player)]));
+}
+
+function getLowestScoreWinner(players: Player[]): Player {
+	return [...players].sort((a, b) => {
+		const scoreDiff = calculateHandScore(a) - calculateHandScore(b);
+		if (scoreDiff !== 0) return scoreDiff;
+		return a.hand.length - b.hand.length;
+	})[0];
+}
+
+function createEmptyHandResult(players: Player[], winnerId: string): GameResult {
+	return {
+		winnerId,
+		reason: 'empty-hand',
+		scores: createScores(players)
+	};
+}
+
+function createBlockedResult(players: Player[]): GameResult {
+	const winner = getLowestScoreWinner(players);
+	return {
+		winnerId: winner.id,
+		reason: 'blocked',
+		scores: createScores(players)
+	};
+}
+
 export function createGameState(playerNames: string[], seed: string): GameState {
 	const rng = createSeededRng(seed);
 	const deck = shuffle(createDeck(), rng);
@@ -39,7 +72,8 @@ export function createGameState(playerNames: string[], seed: string): GameState 
 		history: [],
 		events: [],
 		drawPile: remainingDeck,
-		seed
+		seed,
+		result: null
 	};
 }
 
@@ -77,6 +111,10 @@ export class GameManager {
 		return this.players[this.state.turnIndex];
 	}
 
+	get result() {
+		return this.state.result;
+	}
+
 	startGame() {
 		// Buat seed acak baru setiap kali game di-restart
 		this.seed = Math.random().toString(36).substring(2, 10);
@@ -84,6 +122,10 @@ export class GameManager {
 	}
 
 	nextTurn(playerId: string, tileId: string, side: Move['side']): boolean {
+		if (this.state.result) {
+			return false;
+		}
+
 		const move: Move = { playerId, tileId, side };
 		if (!isValidMove(this.state, move)) {
 			if (!this.hasMoveAvailable(playerId)) {
@@ -111,6 +153,7 @@ export class GameManager {
 
 		// Cek apakah game selesai (kartu habis)
 		const isFinished = result.hand.length === 0;
+		const gameResult = isFinished ? createEmptyHandResult(newPlayers, currentPlayer.id) : null;
 
 		this.state = {
 			...this.state,
@@ -120,8 +163,9 @@ export class GameManager {
 			events: [
 				...this.state.events, 
 				createMoveEvent(move),
-				...(isFinished ? [createGameOverEvent(currentPlayer.id)] : [])
+				...(gameResult ? [createGameOverEvent(currentPlayer.id, gameResult.reason)] : [])
 			],
+			result: gameResult,
 			// PERBAIKAN 3: Jika game selesai, jangan pindah giliran agar tidak error (Infinity Loop)
 			turnIndex: isFinished ? this.state.turnIndex : (this.state.turnIndex + 1) % this.players.length
 		};
@@ -134,6 +178,10 @@ export class GameManager {
 	}
 
 	passTurn(playerId: string): boolean {
+		if (this.state.result) {
+			return false;
+		}
+
 		if (this.currentPlayer.id !== playerId) {
 			return false;
 		}
@@ -142,11 +190,29 @@ export class GameManager {
 			return false;
 		}
 
-		this.state = {
+		const nextTurnIndex = (this.state.turnIndex + 1) % this.players.length;
+		const stateAfterPass: GameState = {
 			...this.state,
 			events: [...this.state.events, createPassEvent(playerId)],
-			turnIndex: (this.state.turnIndex + 1) % this.players.length
+			turnIndex: nextTurnIndex
 		};
+
+		const isBlocked = stateAfterPass.players.every((player) => generateLegalMoves(stateAfterPass, player.id).length === 0);
+		if (isBlocked) {
+			const gameResult = createBlockedResult(stateAfterPass.players);
+			this.state = {
+				...stateAfterPass,
+				result: gameResult,
+				turnIndex: stateAfterPass.players.findIndex((player) => player.id === gameResult.winnerId),
+				events: [
+					...stateAfterPass.events,
+					createGameOverEvent(gameResult.winnerId, gameResult.reason)
+				]
+			};
+			return true;
+		}
+
+		this.state = stateAfterPass;
 		return true;
 	}
 

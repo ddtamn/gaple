@@ -3,6 +3,10 @@ import { getTile, removeTile } from './player';
 import { canPlayTile, playTile } from './board';
 
 export function isValidMove(state: GameState, move: Move): boolean {
+	if (state.result) {
+		return false;
+	}
+
 	const currentPlayer = state.players[state.turnIndex];
 	if (currentPlayer.id !== move.playerId) {
 		return false;
@@ -18,7 +22,7 @@ export function isValidMove(state: GameState, move: Move): boolean {
 
 export function generateLegalMoves(state: GameState, playerId: string): Move[] {
 	const player = state.players.find((item) => item.id === playerId);
-	if (!player) {
+	if (!player || state.result) {
 		return [];
 	}
 
@@ -30,7 +34,7 @@ export function generateLegalMoves(state: GameState, playerId: string): Move[] {
 				tileId: tile.id,
 				side
 			}))
-			.filter((move) => isValidMove(state, move));
+			.filter((move) => playTile(state.board, tile, move.side) !== null);
 	});
 }
 
@@ -54,10 +58,10 @@ export function createPassEvent(playerId: string) {
 	};
 }
 
-export function createGameOverEvent(playerId: string) {
+export function createGameOverEvent(playerId: string, reason = 'empty-hand') {
 	return {
 		type: 'GAME_OVER' as const,
-		payload: { playerId },
+		payload: { playerId, reason },
 		timestamp: Date.now()
 	};
 }

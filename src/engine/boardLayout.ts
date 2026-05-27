@@ -1,6 +1,8 @@
 //boardlayout.ts
 import type { Domino } from './types';
 
+const STRAIGHT_TILES_BEFORE_TURN = 3;
+
 export interface TilePosition {
 	id: string;
 	left: number;
@@ -10,6 +12,45 @@ export interface TilePosition {
 	rotation: number;
 	isBalak: boolean;
 	side: 'left' | 'center' | 'right';
+}
+
+function positionTileOnArm(
+	offsetFromInitial: number,
+	side: 'left' | 'right',
+	TILE_W: number,
+	TILE_H: number,
+	GAP: number
+): Pick<TilePosition, 'x' | 'y' | 'rotation'> {
+	const horizontalStep = TILE_W + GAP;
+	const verticalStep = TILE_W + GAP;
+	const turnY = TILE_H + GAP;
+	const rowY = turnY + verticalStep;
+	const direction = side === 'right' ? 1 : -1;
+	const verticalDirection = side === 'right' ? 1 : -1;
+
+	if (offsetFromInitial <= STRAIGHT_TILES_BEFORE_TURN) {
+		return {
+			x: direction * horizontalStep * offsetFromInitial,
+			y: 0,
+			rotation: 0
+		};
+	}
+
+	if (offsetFromInitial <= STRAIGHT_TILES_BEFORE_TURN + 2) {
+		const verticalOffset = offsetFromInitial - STRAIGHT_TILES_BEFORE_TURN;
+		return {
+			x: direction * horizontalStep * STRAIGHT_TILES_BEFORE_TURN,
+			y: verticalDirection * (turnY + verticalStep * (verticalOffset - 1)),
+			rotation: 90
+		};
+	}
+
+	const rowOffset = offsetFromInitial - (STRAIGHT_TILES_BEFORE_TURN + 2);
+	return {
+		x: direction * horizontalStep * (STRAIGHT_TILES_BEFORE_TURN - rowOffset),
+		y: verticalDirection * rowY,
+		rotation: 180
+	};
 }
 
 /**
@@ -33,7 +74,6 @@ export function calculateBoardLayout(
 	if (tiles.length === 0) return [];
 
 	const layout: TilePosition[] = [];
-	const SPACING = TILE_W + GAP; // Space for each tile horizontally
 
 	for (let i = 0; i < tiles.length; i++) {
 		const tile = tiles[i];
@@ -54,16 +94,12 @@ export function calculateBoardLayout(
 			// Left tiles
 			side = 'left';
 			const offsetFromInitial = initialTileIndex - i;
-			x = -SPACING * offsetFromInitial;
-			y = 0;
-			rotation = 0;
+			({ x, y, rotation } = positionTileOnArm(offsetFromInitial, side, TILE_W, TILE_H, GAP));
 		} else {
 			// Right tiles
 			side = 'right';
 			const offsetFromInitial = i - initialTileIndex;
-			x = SPACING * offsetFromInitial;
-			y = 0;
-			rotation = 0;
+			({ x, y, rotation } = positionTileOnArm(offsetFromInitial, side, TILE_W, TILE_H, GAP));
 		}
 
 		layout.push({
@@ -77,6 +113,33 @@ export function calculateBoardLayout(
 	}
 
 	return layout;
+}
+
+export function calculateBoardPreviewPosition(
+	tiles: Domino[],
+	initialTileIndex: number,
+	side: 'left' | 'right',
+	TILE_W: number = 112,
+	TILE_H: number = 56,
+	GAP: number = 4
+): Pick<TilePosition, 'x' | 'y' | 'rotation'> & { side: 'left' | 'right' } {
+	if (tiles.length === 0) {
+		return {
+			x: 0,
+			y: 0,
+			rotation: 0,
+			side
+		};
+	}
+
+	const offsetFromInitial =
+		side === 'left' ? initialTileIndex + 1 : tiles.length - initialTileIndex;
+	const position = positionTileOnArm(offsetFromInitial, side, TILE_W, TILE_H, GAP);
+
+	return {
+		...position,
+		side
+	};
 }
 
 /**

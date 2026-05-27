@@ -1,7 +1,8 @@
 //+page.svelte
 <script lang="ts">
 	import { SvelteGameManager } from '$lib/game.svelte';
-	import { calculateBoardLayout } from '../engine/boardLayout';
+	import { orientTileForSide } from '../engine/board';
+	import { calculateBoardLayout, calculateBoardPreviewPosition } from '../engine/boardLayout';
 	import type { Domino } from '../engine/types';
 
 	const dotPatterns: Record<number, number[]> = {
@@ -31,10 +32,16 @@
 	let dropZoneHovered: 'left' | 'right' | 'center' | null = $state(null);
 
 	// Active tile = whichever is currently being dragged or selected.
-	const activeTile = $derived(draggedTile ?? selectedTile);
+	const activeTile: Domino | null = $derived(draggedTile ?? selectedTile);
 	const isDragging  = $derived(draggedTile !== null);
 	// Show drop zones whenever there is an active tile and it's player 0's turn.
 	const showDropZones = $derived(activeTile !== null && game.state.turnIndex === 0);
+	const leftPreview = $derived.by(() => getPlacementPreview('left'));
+	const rightPreview = $derived.by(() => getPlacementPreview('right'));
+	const winner = $derived.by(() => {
+		if (!game.state.result) return null;
+		return game.state.players.find((player) => player.id === game.state.result?.winnerId) ?? null;
+	});
 
 	function onWindowMouseMove(e: MouseEvent) {
 		mouseX = e.clientX;
@@ -47,11 +54,30 @@
 	}
 
 	function placeTile(side: 'left' | 'right') {
-		if (!activeTile) return;
+		if (!activeTile || game.state.result) return;
 		game.nextTurn(game.state.players[0].id, activeTile.id, side);
 		draggedTile  = null;
 		selectedTile = null;
 		dropZoneHovered = null;
+	}
+
+	function getPlacementPreview(side: 'left' | 'right') {
+		if (!activeTile || game.state.turnIndex !== 0 || game.state.result) return null;
+
+		const orientedTile = orientTileForSide(game.state.board, activeTile, side);
+		if (!orientedTile) return null;
+
+		return {
+			...orientedTile,
+			...calculateBoardPreviewPosition(
+				game.state.board.playedTiles,
+				game.state.board.initialTileIndex,
+				side,
+				TILE_W,
+				TILE_H,
+				GAP
+			)
+		};
 	}
 
 	// ── Board Layout ───────────────────────────────────────────────────────────
@@ -74,53 +100,15 @@
 	</div>
 {/if}
 
-<!-- ─────────────────────────────────────────────────────────────────────────
-     DROP ZONES — placed directly on the root so they share the same stacking
-     context as the player hands (z-50 beats z-10 reliably).
-     ───────────────────────────────────────────────────────────────────────── -->
-{#if showDropZones && game.state.board.playedTiles.length > 0}
-	<!-- LEFT -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed left-0 top-1/2 z-50 flex h-72 w-24 -translate-y-1/2 cursor-copy
-			flex-col items-center justify-center gap-2 transition-colors
-			{dropZoneHovered === 'left'
-				? 'border-4 border-green-300 bg-green-500/50'
-				: 'border-4 border-green-500/40 bg-green-500/15'}"
-		onmouseenter={() => (dropZoneHovered = 'left')}
-		onmouseleave={() => (dropZoneHovered = null)}
-		onmouseup={() => placeTile('left')}
-		onclick={() => placeTile('left')}
-	>
-		<span class="text-2xl text-green-300">←</span>
-		<span class="text-xs font-bold text-green-300">KIRI</span>
-	</div>
-
-	<!-- RIGHT -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed right-0 top-1/2 z-50 flex h-72 w-24 -translate-y-1/2 cursor-copy
-			flex-col items-center justify-center gap-2 transition-colors
-			{dropZoneHovered === 'right'
-				? 'border-4 border-green-300 bg-green-500/50'
-				: 'border-4 border-green-500/40 bg-green-500/15'}"
-		onmouseenter={() => (dropZoneHovered = 'right')}
-		onmouseleave={() => (dropZoneHovered = null)}
-		onmouseup={() => placeTile('right')}
-		onclick={() => placeTile('right')}
-	>
-		<span class="text-2xl text-green-300">→</span>
-		<span class="text-xs font-bold text-green-300">KANAN</span>
-	</div>
-{/if}
-
 <!-- CENTER — first tile on empty board -->
 {#if showDropZones && game.state.board.playedTiles.length === 0}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
 		class="pointer-events-none fixed inset-0 z-40 flex items-center justify-center"
 	>
 		<div
+			role="button"
+			tabindex="0"
 			class="pointer-events-auto flex h-64 w-96 cursor-copy flex-col items-center
 				justify-center gap-3 rounded-2xl transition-colors
 				{dropZoneHovered === 'center'
@@ -162,6 +150,35 @@
 {/snippet}
 
 <!-- ── PlayerHand snippet ────────────────────────────────────────────────── -->
+{#snippet PlacementGhost(tile: { left: number; right: number; x: number; y: number; rotation: number; side: 'left' | 'right' })}
+	{@const isVertical = tile.rotation % 180 !== 0}
+	{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
+	<div
+		class="absolute z-40 transition-all duration-200 ease-out"
+		style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
+	>
+		<button
+			class="cursor-copy rounded-2xl border-2 border-dashed border-green-300 bg-green-400/15 p-2
+				opacity-70 shadow-[0_0_24px_rgba(74,222,128,0.28)] transition
+				hover:bg-green-400/25 hover:opacity-95
+				{dropZoneHovered === tile.side ? 'scale-105 opacity-95' : ''}"
+			onmouseenter={() => (dropZoneHovered = tile.side)}
+			onmouseleave={() => (dropZoneHovered = null)}
+			onmousedown={(e) => e.preventDefault()}
+			onmouseup={(e) => {
+				e.stopPropagation();
+				placeTile(tile.side);
+			}}
+			onclick={(e) => {
+				e.stopPropagation();
+				placeTile(tile.side);
+			}}
+		>
+			{@render DominoTile(tile, isVertical)}
+		</button>
+	</div>
+{/snippet}
+
 {#snippet PlayerHand(index: number)}
 	<!-- index 0 (bottom) and 2 (top) display tiles vertically (portrait).
 	     index 1 (right) and 3 (left) display tiles horizontally (landscape). -->
@@ -208,22 +225,36 @@
 {/snippet}
 
 <!-- ── Root layout ────────────────────────────────────────────────────────── -->
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div
+	role="presentation"
 	class="relative flex h-screen w-full select-none items-center justify-center overflow-hidden bg-neutral-900 text-white"
 	onclick={() => { selectedTile = null; }} 
 >
 	<!-- HUD -->
 	<div class="absolute left-6 top-6 z-20 flex flex-col items-start gap-2 text-sm">
 		<p class="font-bold text-yellow-400">
-			Giliran: {game.state.players[game.state.turnIndex].name}
+			{#if game.state.result && winner}
+				Pemenang: {winner.name}
+			{:else}
+				Giliran: {game.state.players[game.state.turnIndex].name}
+			{/if}
 		</p>
+		{#if game.state.result}
+			<p class="rounded bg-yellow-500/15 px-3 py-1 text-xs font-semibold text-yellow-200">
+				{game.state.result.reason === 'empty-hand'
+					? 'Kartu habis duluan'
+					: 'Permainan buntu, skor tangan terkecil menang'}
+			</p>
+		{/if}
 		{#if selectedTile}
 			<p class="rounded bg-green-800/60 px-3 py-1 text-xs text-green-300">
 				Kartu dipilih — klik ← / → untuk menempatkan
 			</p>
 		{/if}
 		<button
-			class="rounded bg-neutral-700 px-3 py-2 transition hover:bg-neutral-600 active:scale-95"
+			disabled={game.state.result !== null}
+			class="rounded bg-neutral-700 px-3 py-2 transition hover:bg-neutral-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
 			onclick={(e) => {
 				e.stopPropagation();
 				game.passTurn(game.state.players[game.state.turnIndex].id);
@@ -252,6 +283,12 @@
 						{@render DominoTile(tile, isVertical)}
 					</div>
 				{/each}
+				{#if showDropZones && leftPreview}
+					{@render PlacementGhost(leftPreview)}
+				{/if}
+				{#if showDropZones && rightPreview}
+					{@render PlacementGhost(rightPreview)}
+				{/if}
 			{/if}
 		</div>
 	</div>

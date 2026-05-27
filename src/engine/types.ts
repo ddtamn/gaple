@@ -27,6 +27,14 @@ export interface Move {
 	side: Side;
 }
 
+export type GameOverReason = 'empty-hand' | 'blocked';
+
+export interface GameResult {
+	winnerId: PlayerId;
+	reason: GameOverReason;
+	scores: Record<PlayerId, number>;
+}
+
 export type GameEventType = 'MOVE_PLAYED' | 'PLAYER_PASS' | 'GAME_OVER';
 
 export interface GameEvent {
@@ -43,4 +51,5 @@ export interface GameState {
 	events: GameEvent[];
 	drawPile: Domino[];
 	seed: string;
+	result: GameResult | null;
 }

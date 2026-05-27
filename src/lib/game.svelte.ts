@@ -44,7 +44,7 @@ export class SvelteGameManager {
 	}
 
 	private isBotTurn() {
-		return this.botIds.includes(this.engine.currentPlayer.id);
+		return !this.engine.state.result && this.botIds.includes(this.engine.currentPlayer.id);
 	}
 
 	private scheduleBotTurn() {
@@ -56,10 +56,12 @@ export class SvelteGameManager {
 		this.botTimeout = window.setTimeout(() => {
 			this.botThinking = false;
 			this.runBotTurn();
-		}, 180);
+		}, 750 + Math.floor(Math.random() * 550));
 	}
 
 	private runBotTurn() {
+		if (this.engine.state.result) return;
+
 		const currentPlayer = this.engine.currentPlayer;
 		try {
 			// Panggil AI Monte Carlo

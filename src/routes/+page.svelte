@@ -1,3 +1,4 @@
+//+page.svelte
 <script lang="ts">
 	import { SvelteGameManager } from '$lib/game.svelte';
 	import { calculateBoardLayout } from '../engine/boardLayout';

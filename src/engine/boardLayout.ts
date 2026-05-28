@@ -1,6 +1,6 @@
 import type { Domino } from './types';
 
-const SNAKE_ROW_LENGTH = 3;
+const SNAKE_ROW_LENGTH = 4;
 
 export interface TilePosition {
 	id: string;

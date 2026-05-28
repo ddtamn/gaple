@@ -1,8 +1,8 @@
-//+page.svelte
 <script lang="ts">
 	import { SvelteGameManager } from '$lib/game.svelte';
 	import { orientTileForSide } from '../engine/board';
 	import { calculateBoardLayout, calculateBoardPreviewPosition } from '../engine/boardLayout';
+	import { generateLegalMoves } from '../engine/moves';
 	import type { Domino } from '../engine/types';
 
 	const dotPatterns: Record<number, number[]> = {
@@ -25,13 +25,23 @@
 		'Pemain Atas',
 		'Pemain Kiri'
 	]);
+	let showResultDialog = $state(true);
+	let starterPlayerId = $state<string | null>(null);
+
+	function syncStarterMarker() {
+		starterPlayerId = game.state.players[game.state.turnIndex]?.id ?? null;
+	}
+
 	game.startGame();
+	syncStarterMarker();
 	game.setBotPlayers(['1', '2', '3']);
 
 	function restartGame() {
 		const previousWinnerId = game.state.result?.winnerId;
 		game.startGame(previousWinnerId);
+		syncStarterMarker();
 		game.setBotPlayers(['1', '2', '3']);
+		showResultDialog = true;
 	}
 
 	// ── Interaction state ──────────────────────────────────────────────────────
@@ -52,6 +62,12 @@
 	const winner = $derived.by(() => {
 		if (!game.state.result) return null;
 		return game.state.players.find((player) => player.id === game.state.result?.winnerId) ?? null;
+	});
+	const markerPlayerId = $derived.by(() => {
+		if (game.state.result && winner) {
+			return winner.id;
+		}
+		return starterPlayerId;
 	});
 
 	function onWindowMouseMove(e: MouseEvent) {
@@ -205,43 +221,54 @@
 	{@const isHandVertical = index === 0 || index === 2}
 	{@const player = game.state.players[index]}
 	{@const isMyTurn = game.state.turnIndex === index}
-
-	{#each player.hand as tile (tile.id)}
-		{@const isActive = activeTile?.id === tile.id}
-		<button
-			disabled={!isMyTurn}
-			class="flex cursor-pointer transition-all duration-150 select-none
+	{@const playableTileIds = new Set(
+		generateLegalMoves(game.state, player.id).map((move) => move.tileId)
+	)}
+	<div
+		class="relative flex gap-2 rounded-2xl bg-black/70 p-2
+					{isMyTurn
+			? 'border border-amber-300/70 shadow-[0_0_0_1px_rgba(252,211,77,0.35),0_0_20px_rgba(251,191,36,0.22)]'
+			: 'border border-white/10'}
+					{index === 1 || index === 3 ? 'flex-col-reverse' : 'flex-row'}"
+	>
+		{#each player.hand as tile (tile.id)}
+			{@const isActive = activeTile?.id === tile.id}
+			{@const isPlayable = playableTileIds.has(tile.id)}
+			<button
+				disabled={!isMyTurn || !isPlayable}
+				class="flex cursor-pointer transition-all duration-150 select-none
 				{isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
-				{isMyTurn ? 'opacity-100' : 'opacity-55'}
+				{isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
+				
 				{isActive ? 'scale-90 opacity-30' : ''}
-				{isMyTurn && !isActive && selectedTile === null ? 'ring-0' : ''}
 				{isMyTurn && selectedTile !== null && !isActive ? 'rounded-xl ring-2 ring-white/20' : ''}
 			"
-			onmousedown={(e) => {
-				if (!isMyTurn) return;
-				e.preventDefault();
-				// Start a drag. Clicking without dragging also triggers the tile
-				// selection (handled in onclick below).
-				draggedTile = tile;
-				selectedTile = null;
-				mouseX = e.clientX;
-				mouseY = e.clientY;
-			}}
-			onclick={(e) => {
-				if (!isMyTurn) return;
-				e.stopPropagation();
-				// Toggle selection for click-to-place flow.
-				if (selectedTile?.id === tile.id) {
+				onmousedown={(e) => {
+					if (!isMyTurn || !isPlayable) return;
+					e.preventDefault();
+					// Start a drag. Clicking without dragging also triggers the tile
+					// selection (handled in onclick below).
+					draggedTile = tile;
 					selectedTile = null;
-				} else {
-					selectedTile = tile;
-					draggedTile = null;
-				}
-			}}
-		>
-			{@render DominoTile(tile, isHandVertical)}
-		</button>
-	{/each}
+					mouseX = e.clientX;
+					mouseY = e.clientY;
+				}}
+				onclick={(e) => {
+					if (!isMyTurn || !isPlayable) return;
+					e.stopPropagation();
+					// Toggle selection for click-to-place flow.
+					if (selectedTile?.id === tile.id) {
+						selectedTile = null;
+					} else {
+						selectedTile = tile;
+						draggedTile = null;
+					}
+				}}
+			>
+				{@render DominoTile(tile, isHandVertical)}
+			</button>
+		{/each}
+	</div>
 {/snippet}
 
 <!-- ── Root layout ────────────────────────────────────────────────────────── -->
@@ -255,13 +282,9 @@
 >
 	<!-- HUD -->
 	<div class="absolute top-6 left-6 z-20 flex flex-col items-start gap-2 text-sm">
-		<p class="font-bold text-yellow-400">
-			{#if game.state.result && winner}
-				Pemenang: {winner.name}
-			{:else}
-				Giliran: {game.state.players[game.state.turnIndex].name}
-			{/if}
-		</p>
+		{#if game.state.result && winner}
+			<p class="font-bold text-yellow-400">Pemenang: {winner.name}</p>
+		{/if}
 		{#if game.state.result}
 			<p class="rounded bg-yellow-500/15 px-3 py-1 text-xs font-semibold text-yellow-200">
 				{game.state.result.reason === 'empty-hand'
@@ -275,6 +298,17 @@
 			</p>
 		{/if}
 	</div>
+
+	{#if game.state.result && winner && !showResultDialog}
+		<div class="absolute top-6 right-6 z-20">
+			<button
+				class="rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-green-950 transition hover:bg-green-400 active:scale-95"
+				onclick={restartGame}
+			>
+				Main Lagi
+			</button>
+		</div>
+	{/if}
 
 	<!-- Board -->
 	<div class="absolute inset-0 z-0 flex items-center justify-center p-20">
@@ -307,6 +341,7 @@
 
 	<!-- Player Hands -->
 	{#each game.state.players as player, i (player.id)}
+		{@const isMarked = markerPlayerId === player.id}
 		<div
 			class="absolute z-10 flex flex-col gap-2 rounded-2xl bg-black/40 p-3 shadow-lg
 				ring-1 ring-white/10 backdrop-blur-sm
@@ -322,19 +357,27 @@
 				class="flex items-center justify-between gap-2 text-[10px] tracking-[0.25em] text-yellow-200/90 uppercase"
 			>
 				<span>{player.name}</span>
-				<span
-					class="rounded-full bg-yellow-400/15 px-2 py-1 font-bold text-yellow-100 ring-1 ring-yellow-300/20"
-					>Menang {game.getWinCount(player.id)}</span
-				>
+				<div class="flex items-center gap-1">
+					{#if isMarked}
+						<span
+							class="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-black text-amber-950"
+						>
+							D
+						</span>
+					{/if}
+					<span
+						class="rounded-full bg-yellow-400/15 px-2 py-1 font-bold text-yellow-100 ring-1 ring-yellow-300/20"
+						>{game.getWinCount(player.id)}</span
+					>
+				</div>
 			</div>
-			<div class="flex gap-2 {i === 1 || i === 3 ? 'flex-col-reverse' : 'flex-row'}">
-				{@render PlayerHand(i)}
-			</div>
+
+			{@render PlayerHand(i)}
 		</div>
 	{/each}
 </div>
 
-{#if game.state.result && winner}
+{#if game.state.result && winner && showResultDialog}
 	<div class="fixed inset-0 z-30 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
 		<div
 			class="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-6 shadow-2xl ring-1 ring-white/10"
@@ -349,7 +392,7 @@
 			<div class="mt-6 flex justify-end gap-3">
 				<button
 					class="rounded-xl bg-neutral-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-600 active:scale-95"
-					onclick={() => (game.state.result = null)}
+					onclick={() => (showResultDialog = false)}
 				>
 					Tutup
 				</button>

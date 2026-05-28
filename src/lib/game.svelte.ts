@@ -1,4 +1,3 @@
-// src/lib/game.svelte.ts
 import { GameManager as PureGameManager } from '../engine/game';
 import { selectAiMove } from '../engine/ai';
 import type { GameState, Move } from '../engine/types';

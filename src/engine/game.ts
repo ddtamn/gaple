@@ -2,8 +2,20 @@ import type { Domino, GameResult, GameState, Move, Player } from './types';
 import { createBoard } from './board';
 import { createDomino } from './domino';
 import { createPlayer, receiveTiles, removeTile } from './player';
-import { createSeededRng, shuffle, cloneGameState, serializeGameState, loadGameState } from './utils';
-import { createGameOverEvent, createMoveEvent, createPassEvent, generateLegalMoves, isValidMove } from './moves';
+import {
+	createSeededRng,
+	shuffle,
+	cloneGameState,
+	serializeGameState,
+	loadGameState
+} from './utils';
+import {
+	createGameOverEvent,
+	createMoveEvent,
+	createPassEvent,
+	generateLegalMoves,
+	isValidMove
+} from './moves';
 import { playTile } from './board';
 
 function createDeck(): Domino[] {
@@ -53,7 +65,20 @@ function createBlockedResult(players: Player[]): GameResult {
 	};
 }
 
-export function createGameState(playerNames: string[], seed: string): GameState {
+function findStarterPlayer(players: Player[]): number {
+	const doubleThree = players.findIndex((player) =>
+		player.hand.some((tile) => tile.left === 3 && tile.right === 3)
+	);
+
+	return doubleThree >= 0 ? doubleThree : 0;
+}
+
+export function createGameState(
+	playerNames: string[],
+	seed: string,
+	startingPlayerId?: string,
+	requiresStarterTile = true
+): GameState {
 	const rng = createSeededRng(seed);
 	const deck = shuffle(createDeck(), rng);
 	const players = createPlayers(playerNames);
@@ -65,10 +90,14 @@ export function createGameState(playerNames: string[], seed: string): GameState 
 		players[i].hand = receiveTiles([], hand);
 	}
 
+	const turnIndex = startingPlayerId
+		? players.findIndex((player) => player.id === startingPlayerId)
+		: findStarterPlayer(players);
+
 	return {
 		players,
-		board: createBoard(),
-		turnIndex: 0,
+		board: createBoard(requiresStarterTile),
+		turnIndex: turnIndex >= 0 ? turnIndex : 0,
 		history: [],
 		events: [],
 		drawPile: remainingDeck,
@@ -80,7 +109,10 @@ export function createGameState(playerNames: string[], seed: string): GameState 
 export class GameManager {
 	public state: GameState;
 
-	constructor(playerNames: string[], public seed = 'seed') {
+	constructor(
+		playerNames: string[],
+		public seed = 'seed'
+	) {
 		if (playerNames.length !== 4) {
 			throw new Error('Game requires exactly 4 players');
 		}
@@ -115,10 +147,16 @@ export class GameManager {
 		return this.state.result;
 	}
 
-	startGame() {
+	startGame(previousWinnerId?: string) {
 		// Buat seed acak baru setiap kali game di-restart
 		this.seed = Math.random().toString(36).substring(2, 10);
-		this.state = createGameState(this.players.map((player) => player.name), this.seed);
+		const requiresStarterTile = previousWinnerId === undefined;
+		this.state = createGameState(
+			this.players.map((player) => player.name),
+			this.seed,
+			previousWinnerId,
+			requiresStarterTile
+		);
 	}
 
 	nextTurn(playerId: string, tileId: string, side: Move['side']): boolean {
@@ -147,7 +185,7 @@ export class GameManager {
 		}
 
 		// PERBAIKAN 1: Buat array players baru tanpa memutasi yang lama
-		const newPlayers = this.state.players.map(p => 
+		const newPlayers = this.state.players.map((p) =>
 			p.id === currentPlayer.id ? { ...p, hand: result.hand } : p
 		);
 
@@ -161,13 +199,15 @@ export class GameManager {
 			board: placedBoard,
 			history: [...this.state.history, move],
 			events: [
-				...this.state.events, 
+				...this.state.events,
 				createMoveEvent(move),
 				...(gameResult ? [createGameOverEvent(currentPlayer.id, gameResult.reason)] : [])
 			],
 			result: gameResult,
 			// PERBAIKAN 3: Jika game selesai, jangan pindah giliran agar tidak error (Infinity Loop)
-			turnIndex: isFinished ? this.state.turnIndex : (this.state.turnIndex + 1) % this.players.length
+			turnIndex: isFinished
+				? this.state.turnIndex
+				: (this.state.turnIndex + 1) % this.players.length
 		};
 
 		return true;
@@ -197,7 +237,9 @@ export class GameManager {
 			turnIndex: nextTurnIndex
 		};
 
-		const isBlocked = stateAfterPass.players.every((player) => generateLegalMoves(stateAfterPass, player.id).length === 0);
+		const isBlocked = stateAfterPass.players.every(
+			(player) => generateLegalMoves(stateAfterPass, player.id).length === 0
+		);
 		if (isBlocked) {
 			const gameResult = createBlockedResult(stateAfterPass.players);
 			this.state = {

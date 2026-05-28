@@ -2,6 +2,39 @@ import { describe, expect, it } from 'vitest';
 import { GameManager } from '../game';
 
 describe('Domino engine', () => {
+	it('starts the match with the player holding 3|3 as the first mover', () => {
+		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
+		game.startGame();
+
+		const starter = game.players.find((player) =>
+			player.hand.some((tile) => tile.left === 3 && tile.right === 3)
+		);
+
+		expect(starter).toBeDefined();
+		expect(game.currentPlayer.id).toBe(starter?.id);
+	});
+
+	it('restores the previous winner as the first mover for the next match', () => {
+		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
+		game.startGame('2');
+
+		expect(game.currentPlayer.id).toBe('2');
+	});
+
+	it('allows the previous winner to start with any tile on the next match', () => {
+		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
+		game.startGame('2');
+
+		const current = game.currentPlayer;
+		const nonStartingTile = current.hand.find((tile) => !(tile.left === 3 && tile.right === 3))!;
+
+		const success = game.nextTurn(current.id, nonStartingTile.id, 'right');
+
+		expect(success).toBe(true);
+		expect(game.board.playedTiles).toHaveLength(1);
+		expect(game.board.playedTiles[0]).toEqual(nonStartingTile);
+	});
+
 	it('creates a standard 4-player game with 7 tiles each', () => {
 		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
 		game.startGame();
@@ -18,22 +51,53 @@ describe('Domino engine', () => {
 		game.startGame();
 
 		const current = game.currentPlayer;
-		const firstTile = current.hand[0];
-		const success = game.nextTurn(current.id, firstTile.id, 'right');
+		const firstTile = current.hand.find((tile) => tile.left === 3 && tile.right === 3);
+		expect(firstTile).toBeDefined();
+
+		const success = game.nextTurn(current.id, firstTile!.id, 'right');
 
 		expect(success).toBe(true);
 		expect(game.history).toHaveLength(1);
 		expect(game.board.playedTiles).toHaveLength(1);
-		expect(game.turnIndex).toBe(1);
+		expect(game.turnIndex).toBe((Number(current.id) + 1) % 4);
+	});
+
+	it('only allows 3|3 to be played on the very first move', () => {
+		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
+		game.startGame();
+
+		const current = game.currentPlayer;
+		const nonStartingTile = current.hand.find((tile) => !(tile.left === 3 && tile.right === 3))!;
+		game.state = {
+			...game.state,
+			players: game.state.players.map((player, index) =>
+				index === game.turnIndex ? { ...player, hand: [nonStartingTile] } : player
+			)
+		};
+
+		const success = game.nextTurn(current.id, nonStartingTile.id, 'right');
+
+		expect(success).toBe(true);
+		expect(game.board.playedTiles).toHaveLength(0);
+		expect(game.history).toHaveLength(0);
+		expect(game.state.result?.reason).toBe('blocked');
 	});
 
 	it('ends the game when a player plays their last tile', () => {
 		expect.assertions(4);
 		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
 		game.startGame();
-		const lastTile = game.currentPlayer.hand[0];
+		const current = game.currentPlayer;
+		const lastTile = { id: 'last-3-0', left: 3, right: 0 };
 		game.state = {
 			...game.state,
+			board: {
+				playedTiles: [{ id: 'starter-3-3', left: 3, right: 3 }],
+				leftEnd: 3,
+				rightEnd: 3,
+				initialTileIndex: 0,
+				requiresStarterTile: true
+			},
 			players: game.state.players.map((player, index) =>
 				index === game.turnIndex ? { ...player, hand: [lastTile] } : player
 			)
@@ -42,7 +106,7 @@ describe('Domino engine', () => {
 		const success = game.nextTurn(game.currentPlayer.id, lastTile.id, 'right');
 
 		expect(success).toBe(true);
-		expect(game.state.result?.winnerId).toBe('0');
+		expect(game.state.result?.winnerId).toBe(game.currentPlayer.id);
 		expect(game.state.result?.reason).toBe('empty-hand');
 		expect(game.events.at(-1)?.type).toBe('GAME_OVER');
 	});
@@ -57,7 +121,8 @@ describe('Domino engine', () => {
 				playedTiles: [{ id: 'blocked-start', left: 6, right: 6 }],
 				leftEnd: 6,
 				rightEnd: 6,
-				initialTileIndex: 0
+				initialTileIndex: 0,
+				requiresStarterTile: true
 			},
 			players: [
 				{ ...game.state.players[0], hand: [{ id: 'lowest', left: 0, right: 1 }] },

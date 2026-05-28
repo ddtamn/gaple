@@ -11,6 +11,18 @@ Turn the current AI from a strong heuristic-plus-playout bot into a modular engi
 
 This plan is written for the codebase as it exists now, where the core AI lives in [`src/engine/ai.ts`](src/engine/ai.ts) and currently relies on tactical scoring plus repeated randomized playouts.
 
+## Current Implementation Status
+
+The refactor has already moved past the initial scaffolding:
+
+- Phase 4: MCTS/search path is implemented in [`src/engine/ai/search.ts`](src/engine/ai/search.ts).
+- Phase 5: Endgame solver support is implemented in [`src/engine/ai/endgame.ts`](src/engine/ai/endgame.ts).
+- Phase 6: Better playout policy is implemented in [`src/engine/ai/playout.ts`](src/engine/ai/playout.ts).
+- Phase 7: Lightweight hashing / transposition-style caching is implemented in [`src/engine/ai/cache.ts`](src/engine/ai/cache.ts).
+- Phase 8: Learning-oriented hooks are available as a blueprint entry point in [`src/engine/ai/learning.ts`](src/engine/ai/learning.ts), but they are not yet wired into the main AI path.
+
+The remaining work is therefore mostly refinement and hardening, not a fresh rewrite.
+
 ---
 
 ## Current Baseline
@@ -342,7 +354,7 @@ If we want the best chance of success with the least churn, the order should be:
 7. Add endgame solver
 8. Improve playout policy and tactical threat handling
 9. Add caching and performance work
-10. Consider optional ML
+10. Keep the learning blueprint as an opt-in future extension, not a dependency for the first stable release
 
 ---
 

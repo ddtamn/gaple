@@ -1,21 +1,29 @@
 import type { Board, Domino, Side } from './types';
 import { flipped } from './domino';
 
-export function createBoard(): Board {
+export function createBoard(requiresStarterTile = true): Board {
 	return {
 		playedTiles: [],
 		leftEnd: null,
 		rightEnd: null,
-		initialTileIndex: 0
+		initialTileIndex: 0,
+		requiresStarterTile
 	};
+}
+
+function isStarterTile(tile: Domino): boolean {
+	return tile.left === 3 && tile.right === 3;
 }
 
 export function canPlayTile(board: Board, tile: Domino): boolean {
 	if (board.playedTiles.length === 0) {
-		return true;
+		return !board.requiresStarterTile || isStarterTile(tile);
 	}
 
-	return [board.leftEnd, board.rightEnd].includes(tile.left) || [board.leftEnd, board.rightEnd].includes(tile.right);
+	return (
+		[board.leftEnd, board.rightEnd].includes(tile.left) ||
+		[board.leftEnd, board.rightEnd].includes(tile.right)
+	);
 }
 
 export function orientTileForSide(board: Board, tile: Domino, side: Side): Domino | null {
@@ -45,6 +53,10 @@ export function orientTileForSide(board: Board, tile: Domino, side: Side): Domin
 }
 
 export function playTile(board: Board, tile: Domino, side: Side): Board | null {
+	if (board.playedTiles.length === 0 && board.requiresStarterTile && !isStarterTile(tile)) {
+		return null;
+	}
+
 	const placedTile = orientTileForSide(board, tile, side);
 	if (!placedTile) {
 		return null;
@@ -73,6 +85,7 @@ export function playTile(board: Board, tile: Domino, side: Side): Board | null {
 		playedTiles,
 		leftEnd,
 		rightEnd,
-		initialTileIndex
+		initialTileIndex,
+		requiresStarterTile: board.requiresStarterTile
 	};
 }

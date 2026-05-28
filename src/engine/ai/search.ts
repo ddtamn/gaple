@@ -3,6 +3,7 @@ import { GameManager } from '../game';
 import { generateLegalMoves } from '../moves';
 import { createSeededRng } from '../utils';
 import { playout } from './playout';
+import { createTranspositionTable, hashGameState } from './cache';
 
 export interface MctsOptions {
 	iterations?: number;
@@ -47,8 +48,14 @@ function rolloutValue(
 	state: GameState,
 	playerId: string,
 	maxPlayoutTurns: number,
-	rng: ReturnType<typeof createSeededRng>
+	rng: ReturnType<typeof createSeededRng>,
+	cache = createTranspositionTable()
 ): number {
+	const key = hashGameState(state);
+	const cached = cache.get(key);
+	if (cached) {
+		return cached.value;
+	}
 	const simManager = new GameManager(state.players.map((player) => player.name));
 	simManager.state = state;
 
@@ -68,7 +75,9 @@ function rolloutValue(
 		}
 	}
 
-	return playout(simManager.state, playerId, rng, maxPlayoutTurns);
+	const value = playout(simManager.state, playerId, rng, maxPlayoutTurns);
+	cache.set(key, { value, visits: 1, updatedAt: Date.now() });
+	return value;
 }
 
 function selectChild(
@@ -76,8 +85,12 @@ function selectChild(
 	exploration: number,
 	rng: ReturnType<typeof createSeededRng>
 ): MctsNode {
+	if (node.children.length === 0) {
+		return node;
+	}
+
 	const logParent = Math.log(Math.max(1, node.visits));
-	return node.children.reduce(
+	const bestChoice = node.children.reduce<{ node: MctsNode; score: number } | null>(
 		(best, child) => {
 			const exploitation = child.totalValue / Math.max(1, child.visits);
 			const explorationTerm = exploration * Math.sqrt(logParent / Math.max(1, child.visits));
@@ -87,8 +100,10 @@ function selectChild(
 			}
 			return best;
 		},
-		null as null | { node: MctsNode; score: number }
-	).node;
+		null
+	);
+
+	return bestChoice?.node ?? node;
 }
 
 export function runMctsSearch(
@@ -100,6 +115,7 @@ export function runMctsSearch(
 	const maxPlayoutTurns = options.maxPlayoutTurns ?? 60;
 	const exploration = options.exploration ?? 1.414;
 	const rng = createSeededRng(options.seed ?? `mcts-${playerId}`);
+	const transpositionTable = createTranspositionTable();
 	const root = createNode(state, null, null);
 
 	for (let index = 0; index < iterations; index++) {
@@ -120,11 +136,12 @@ export function runMctsSearch(
 			node = child;
 		}
 
-		const reward = rolloutValue(node.state, playerId, maxPlayoutTurns, rng);
-		while (node) {
-			node.visits += 1;
-			node.totalValue += reward;
-			node = node.parent;
+		const reward = rolloutValue(node.state, playerId, maxPlayoutTurns, rng, transpositionTable);
+		let current: MctsNode | null = node;
+		while (current) {
+			current.visits += 1;
+			current.totalValue += reward;
+			current = current.parent;
 		}
 	}
 

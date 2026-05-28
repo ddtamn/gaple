@@ -1,7 +1,7 @@
 //boardlayout.ts
 import type { Domino } from './types';
 
-const STRAIGHT_TILES_BEFORE_TURN = 3;
+const SNAKE_ROW_LENGTH = 3;
 
 export interface TilePosition {
 	id: string;
@@ -14,7 +14,7 @@ export interface TilePosition {
 	side: 'left' | 'center' | 'right';
 }
 
-function positionTileOnArm(
+function positionTileOnSnake(
 	offsetFromInitial: number,
 	side: 'left' | 'right',
 	TILE_W: number,
@@ -22,41 +22,30 @@ function positionTileOnArm(
 	GAP: number
 ): Pick<TilePosition, 'x' | 'y' | 'rotation'> {
 	const horizontalStep = TILE_W + GAP;
-	const verticalStep = TILE_W + GAP;
-	const turnY = TILE_H + GAP;
-	const rowY = turnY + verticalStep;
+	const verticalStep = TILE_H + GAP;
 	const direction = side === 'right' ? 1 : -1;
 	const verticalDirection = side === 'right' ? 1 : -1;
 
-	if (offsetFromInitial <= STRAIGHT_TILES_BEFORE_TURN) {
-		return {
-			x: direction * horizontalStep * offsetFromInitial,
-			y: 0,
-			rotation: 0
-		};
-	}
+	const progress = Math.max(offsetFromInitial - 1, 0);
+	const rowIndex = Math.floor(progress / SNAKE_ROW_LENGTH);
+	const indexInRow = progress % SNAKE_ROW_LENGTH;
+	const rowDirection = rowIndex % 2 === 0 ? 1 : -1;
+	const segmentOffset = rowDirection === 1 ? indexInRow + 1 : SNAKE_ROW_LENGTH - indexInRow;
 
-	if (offsetFromInitial <= STRAIGHT_TILES_BEFORE_TURN + 2) {
-		const verticalOffset = offsetFromInitial - STRAIGHT_TILES_BEFORE_TURN;
-		return {
-			x: direction * horizontalStep * STRAIGHT_TILES_BEFORE_TURN,
-			y: verticalDirection * (turnY + verticalStep * (verticalOffset - 1)),
-			rotation: 90
-		};
-	}
-
-	const rowOffset = offsetFromInitial - (STRAIGHT_TILES_BEFORE_TURN + 2);
 	return {
-		x: direction * horizontalStep * (STRAIGHT_TILES_BEFORE_TURN - rowOffset),
-		y: verticalDirection * rowY,
-		rotation: 180
+		x: direction * segmentOffset * horizontalStep,
+		y: verticalDirection * rowIndex * verticalStep,
+		rotation: rowDirection === 1 ? 0 : 180
 	};
 }
 
 /**
- * Calculates bidirectional layout for board tiles
+ * Calculates a snake-style layout for board tiles.
  * LEFT TILES ← INITIAL TILE → RIGHT TILES
- * 
+ *
+ * Tiles follow a zig-zag path so each row snakes back instead of turning into
+ * an abrupt vertical stack.
+ *
  * @param tiles - All played tiles in order [leftTiles..., initialTile, rightTiles...]
  * @param initialTileIndex - Index of the initial tile in the array
  * @param TILE_W - Width of horizontal tile
@@ -94,12 +83,12 @@ export function calculateBoardLayout(
 			// Left tiles
 			side = 'left';
 			const offsetFromInitial = initialTileIndex - i;
-			({ x, y, rotation } = positionTileOnArm(offsetFromInitial, side, TILE_W, TILE_H, GAP));
+			({ x, y, rotation } = positionTileOnSnake(offsetFromInitial, side, TILE_W, TILE_H, GAP));
 		} else {
 			// Right tiles
 			side = 'right';
 			const offsetFromInitial = i - initialTileIndex;
-			({ x, y, rotation } = positionTileOnArm(offsetFromInitial, side, TILE_W, TILE_H, GAP));
+			({ x, y, rotation } = positionTileOnSnake(offsetFromInitial, side, TILE_W, TILE_H, GAP));
 		}
 
 		layout.push({
@@ -134,7 +123,7 @@ export function calculateBoardPreviewPosition(
 
 	const offsetFromInitial =
 		side === 'left' ? initialTileIndex + 1 : tiles.length - initialTileIndex;
-	const position = positionTileOnArm(offsetFromInitial, side, TILE_W, TILE_H, GAP);
+	const position = positionTileOnSnake(offsetFromInitial, side, TILE_W, TILE_H, GAP);
 
 	return {
 		...position,

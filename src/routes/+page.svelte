@@ -323,7 +323,7 @@
 	)}
 
 	<div
-		class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-150' : ''}
+		class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.4]' : ''}
        "
 	>
 		{#if isMain}
@@ -333,7 +333,7 @@
 		{/if}
 		<div
 			class="flex flex-row flex-wrap justify-center rounded-2xl md:flex-nowrap {isMain
-				? 'w-[60vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
+				? 'w-[80vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
 				: 'w-[270px] gap-1 p-2 md:w-max md:gap-2 md:p-3'}"
 		>
 			{#each player.hand as tile (tile.id)}

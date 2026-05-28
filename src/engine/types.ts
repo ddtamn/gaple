@@ -54,3 +54,14 @@ export interface GameState {
 	seed: string;
 	result: GameResult | null;
 }
+
+export interface TilePosition {
+	id: TileId;
+	left: number;
+	right: number;
+	isBalak: boolean;
+	side: Side;
+	x: number;
+	y: number;
+	rotation: number;
+}

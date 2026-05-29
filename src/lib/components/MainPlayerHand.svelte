@@ -3,7 +3,11 @@
 	import { getRemainingTilesCount } from '../../engine/utils';
 	import TileIcon from '$lib/icons/TileIcon.svelte';
 	import DominoTile from './DominoTile.svelte';
-	import { untrack } from 'svelte'; // <-- 1. IMPORT UNTRACK DARI SVELTE
+	import { untrack } from 'svelte';
+
+	// 1. IMPORT ANIMASI FLIP BAWAAN SVELTE
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
 
 	let {
 		game,
@@ -20,12 +24,10 @@
 	} = $props();
 
 	let boardTiles = $derived(game.state.board.playedTiles);
-
 	let sortedHand = $state<any[]>([]);
 
-	// 2. KONTROL UPDATE INDEX KARTU HANYA SAAT TURN PLAYER UTAMA
 	$effect(() => {
-		if (isMyTurn) {
+		if (isMyTurn && player.hand.length > 4) {
 			const unplayable = [];
 			const playable = [];
 
@@ -43,8 +45,6 @@
 
 			sortedHand = [...leftUnplayable, ...playable, ...rightUnplayable];
 		} else {
-			// <-- 3. GUNAKAN UNTRACK DI SINI
-			// Minta Svelte membaca nilai sortedHand saat ini TANPA menjadikannya pemicu infinite loop
 			const currentSortedHand = untrack(() => sortedHand);
 
 			const currentHandIds = new Set(player.hand.map((t: any) => t.id));
@@ -58,7 +58,6 @@
 		}
 	});
 
-	// Menghitung sisa tile yang ada untuk tracker HUD
 	let tracker = $derived(getRemainingTilesCount(boardTiles, player.hand));
 	const remainings = $derived(
 		Array.from({ length: 7 }, (_, value) => ({
@@ -80,11 +79,12 @@
 	}
 
 	$effect(() => {
-		if (emblaApi && isMyTurn && sortedHand.length > 0) {
+		if (emblaApi && isMyTurn && sortedHand.length > 4) {
+			// 3. TAMBAH JEDA: Tunggu animasi FLIP selesai (300ms) sebelum auto-scroll ke tengah
 			setTimeout(() => {
 				const middleIndex = Math.floor(sortedHand.length / 2);
 				emblaApi.scrollTo(middleIndex);
-			}, 50);
+			}, 300);
 		}
 	});
 </script>
@@ -94,11 +94,13 @@
 	use:emblaCarouselSvelte={emblaOptions}
 	onemblaInit={onEmblaInit}
 >
-	<div class="embla__container flex gap-2">
+	<div class="embla__container flex gap-3">
 		{#each sortedHand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
 			{@const isPlayable = playableTileIds.has(tile.id)}
+
 			<button
+				animate:flip={{ duration: 400, easing: quintOut }}
 				disabled={!isMyTurn || !isPlayable}
 				class="embla__slide flex flex-[0_0_auto] cursor-pointer transition-all duration-150 select-none hover:-translate-y-2
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}

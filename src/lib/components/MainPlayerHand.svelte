@@ -68,8 +68,7 @@
 
 	const emblaOptions = {
 		align: 'center',
-		containScroll: 'trimSnaps',
-		dragFree: false
+		dragFree: true
 	};
 
 	let emblaApi = $state<any>(null);
@@ -94,7 +93,7 @@
 	use:emblaCarouselSvelte={emblaOptions}
 	onemblaInit={onEmblaInit}
 >
-	<div class="embla__container flex gap-3">
+	<div class="embla__container flex gap-1">
 		{#each sortedHand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
 			{@const isPlayable = playableTileIds.has(tile.id)}
@@ -104,10 +103,8 @@
 				disabled={!isMyTurn || !isPlayable}
 				class="embla__slide flex flex-[0_0_auto] cursor-pointer transition-all duration-150 select-none hover:-translate-y-2
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
-                {isActive ? 'scale-90 opacity-30' : ''}
-                {isMyTurn && selectedTileId !== null && !isActive
-					? 'rounded-xl ring-2 ring-white/20'
-					: ''}"
+                {isActive ? '-translate-y-2 opacity-30' : ''}
+               "
 				onmousedown={(e) => {
 					if (!isMyTurn || !isPlayable) return;
 					ondragstart(tile, e);

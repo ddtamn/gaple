@@ -139,7 +139,7 @@
 		const isMobile = boardWidth < 768;
 
 		const PADDING_W = isMobile ? 40 : 100;
-		const PADDING_H = isMobile ? 320 : 340;
+		const PADDING_H = isMobile ? 280 : 340;
 
 		const maxW = Math.max(boardWidth - PADDING_W, 200);
 		const maxH = Math.max(boardHeight - PADDING_H, 200);
@@ -288,15 +288,8 @@
 {#snippet MainPlayerBadge()}
 	{@const player = game.state.players[0]}
 	{@const isMarked = markerPlayerId === player.id}
-	{@const isMyTurn = game.state.turnIndex === 0}
 
 	<div class="relative flex w-fit items-center gap-2">
-		<!-- {#if isMyTurn}
-			<div
-				class="pointer-events-none absolute inset-0 animate-pulse rounded-full border border-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.6)]"
-			></div>
-		{/if} -->
-
 		{#if isMarked}
 			<span
 				class="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-xs font-black text-amber-950 shadow-md"
@@ -323,7 +316,7 @@
 	)}
 
 	<div
-		class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.4]' : ''}
+		class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.3]' : ''}
        "
 	>
 		{#if isMain}
@@ -332,8 +325,8 @@
 			</div>
 		{/if}
 		<div
-			class="flex flex-row flex-wrap justify-center rounded-2xl md:flex-nowrap {isMain
-				? 'w-[80vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
+			class="flex flex-row flex-wrap justify-center rounded-2xl transition-all duration-150 md:flex-nowrap {isMain
+				? 'w-[90vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
 				: 'w-[270px] gap-1 p-2 md:w-max md:gap-2 md:p-3'}"
 		>
 			{#each player.hand as tile (tile.id)}

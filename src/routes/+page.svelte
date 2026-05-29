@@ -116,6 +116,8 @@
 	let boardWidth = $state(950);
 	let boardHeight = $state(650);
 
+	let mainHandHeight = $state(0);
+
 	let camera = $derived.by(() => {
 		const items = [...boardLayout];
 		if (showDropZones && leftPreview) items.push(leftPreview as TilePosition);
@@ -141,7 +143,7 @@
 
 		const isMobile = boardWidth < 768;
 		const PADDING_W = isMobile ? 40 : 100;
-		const PADDING_H = isMobile ? 280 : 340;
+		const PADDING_H = isMobile ? mainHandHeight + 100 : mainHandHeight + 160;
 
 		const maxW = Math.max(boardWidth - PADDING_W, 200);
 		const maxH = Math.max(boardHeight - PADDING_H, 200);
@@ -208,7 +210,7 @@
 
 <div
 	role="presentation"
-	class="relative flex h-screen w-full items-center justify-center overflow-hidden bg-neutral-900 text-white select-none"
+	class="relative flex h-dvh w-full items-center justify-center overflow-hidden bg-neutral-900 text-white select-none"
 	onclick={() => (selectedTile = null)}
 >
 	<div
@@ -382,7 +384,10 @@
 		</div>
 	</div>
 
-	<div class="absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+	<div
+		bind:clientHeight={mainHandHeight}
+		class="absolute bottom-2 left-1/2 z-10 w-full -translate-x-1/2 px-8 md:w-fit"
+	>
 		<MainPlayerHand
 			player={game.state.players[0]}
 			isMyTurn={game.state.turnIndex === 0}

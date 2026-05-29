@@ -56,12 +56,27 @@
 </div>
 
 <div
-	class="flex w-full items-center justify-center gap-2 rounded-md bg-black/25 p-1 text-slate-200"
+	class="flex w-full items-center justify-between gap-2 rounded-md bg-black/25 p-1 px-4 text-slate-50/35"
 >
-	{#each remainings as item (item.value)}
-		<div class="flex items-center justify-center gap-1">
-			<TileIcon value={item.value} size="18" />
-			<p>{item.remain}</p>
-		</div>
-	{/each}
+	<div class="flex items-center justify-center gap-2">
+		{#each remainings as item (item.value)}
+			<div class="flex items-center justify-center gap-px">
+				<TileIcon value={item.value} size="16" />
+				<p class="text-xs">{item.remain}</p>
+			</div>
+		{/each}
+	</div>
+	<div class="flex items-center gap-2 text-xs">
+		{#if isMarked}
+			<span
+				class="flex size-5 items-center justify-center rounded-md bg-amber-400 text-xs font-black text-amber-950 shadow-md"
+				>D</span
+			>
+		{/if}
+		<span
+			class="flex size-5 min-w-[24px] items-center justify-center rounded-md bg-black/75 px-2 text-xs font-black text-yellow-400 ring-1 ring-yellow-400/40"
+		>
+			{winCount}
+		</span>
+	</div>
 </div>

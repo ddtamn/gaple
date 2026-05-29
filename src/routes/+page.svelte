@@ -33,7 +33,6 @@
 	game.startGame();
 	syncStarterMarker();
 	game.setBotPlayers(['1', '2', '3']);
-
 	$effect(() => {
 		$inspect(game.state.board.playedTiles);
 	});
@@ -58,12 +57,10 @@
 	const showDropZones = $derived(activeTile !== null && game.state.turnIndex === 0);
 	const leftPreview = $derived.by(() => getPlacementPreview('left'));
 	const rightPreview = $derived.by(() => getPlacementPreview('right'));
-
 	const winner = $derived.by(() => {
 		if (!game.state.result) return null;
 		return game.state.players.find((p) => p.id === game.state.result?.winnerId) ?? null;
 	});
-
 	const markerPlayerId = $derived.by(() => {
 		if (game.state.result && winner) return winner.id;
 		return starterPlayerId;
@@ -89,6 +86,19 @@
 
 	function getPlacementPreview(side: 'left' | 'right') {
 		if (!activeTile || game.state.turnIndex !== 0 || game.state.result) return null;
+
+		// KONDISI SAAT MEJA KOSONG (KARTU PERTAMA)
+		if (game.state.board.playedTiles.length === 0) {
+			// Cukup tampilkan 1 bayangan ghost saja di tengah, lewati bagian 'left'
+			if (side === 'left') return null;
+			return {
+				...activeTile,
+				x: 0,
+				y: 0,
+				rotation: 90 // Atur rotasi menjadi horizontal
+			};
+		}
+
 		const orientedTile = orientTileForSide(game.state.board, activeTile, side);
 		if (!orientedTile) return null;
 
@@ -117,7 +127,6 @@
 	let boardHeight = $state(650);
 
 	let mainHandHeight = $state(0);
-
 	let camera = $derived.by(() => {
 		const items = [...boardLayout];
 		if (showDropZones && leftPreview) items.push(leftPreview as TilePosition);
@@ -166,8 +175,10 @@
 		mouseY = e.clientY;
 	}
 
+	// Perbaikan: Pastikan jika game sudah berakhir (result aktif), kartu di tangan tidak bisa diklik lagi
 	function handleTileClick(tile: Domino, e: MouseEvent) {
 		e.stopPropagation();
+		if (game.state.result) return;
 		if (selectedTile?.id === tile.id) selectedTile = null;
 		else {
 			selectedTile = tile;
@@ -187,27 +198,6 @@
 	</div>
 {/if}
 
-{#if showDropZones && game.state.board.playedTiles.length === 0}
-	<div class="pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
-		<div
-			role="button"
-			tabindex="0"
-			class="pointer-events-auto flex h-48 w-72 cursor-copy flex-col items-center justify-center gap-3 rounded-2xl transition-colors md:h-64 md:w-96
-        {dropZoneHovered === 'center'
-				? 'border-4 border-green-300 bg-green-500/50'
-				: 'border-4 border-green-400 bg-green-500/20'}"
-			onmouseenter={() => (dropZoneHovered = 'center')}
-			onmouseleave={() => (dropZoneHovered = null)}
-			onmouseup={() => placeTile('right')}
-			onclick={() => placeTile('right')}
-			onkeydown={(e) => e.key === 'Enter' && placeTile('right')}
-		>
-			<span class="text-3xl text-green-300 md:text-4xl">+</span>
-			<span class="text-sm font-bold text-green-300 md:text-base">Letakkan Kartu Pertama</span>
-		</div>
-	</div>
-{/if}
-
 <div
 	role="presentation"
 	class="relative flex h-dvh w-full items-center justify-center overflow-hidden bg-neutral-900 text-white select-none"
@@ -216,27 +206,35 @@
 	<div
 		class="absolute top-2 left-2 z-20 flex flex-col items-start gap-2 text-sm md:top-6 md:left-6"
 	>
-		{#if game.state.result && winner}
-			<p class="font-bold text-yellow-400">Pemenang: {winner.name}</p>
-		{/if}
-		{#if game.state.result}
-			<p class="rounded bg-yellow-500/15 px-3 py-1 text-xs font-semibold text-yellow-200">
-				{game.state.result.reason === 'empty-hand'
-					? 'Kartu habis duluan'
-					: 'Permainan buntu, skor terkecil menang'}
-			</p>
-		{/if}
-		{#if selectedTile}
+		{#if selectedTile && !game.state.result}
 			<p class="rounded bg-green-800/60 px-3 py-1 text-xs text-green-300">
 				Kartu dipilih — klik ← / → untuk menempatkan
 			</p>
 		{/if}
 	</div>
 
-	{#if game.state.result && winner && !showResultDialog}
-		<div class="absolute top-2 right-2 z-20 md:top-6 md:right-6">
+	{#if game.state.result && winner}
+		<div class="absolute top-40 left-1/2 z-20 w-full -translate-x-1/2 p-4 text-center md:top-40">
+			<h2
+				class="text-sm font-black tracking-wide drop-shadow-[0_4px_6px_rgba(0,0,0,0.7)] md:text-4xl
+				{winner.id === game.state.players[0].id ? 'text-yellow-400' : 'text-red-500'}"
+			>
+				{#if winner.id === game.state.players[0].id}
+					🎉 Anda Menang! 🎉
+				{:else}
+					😞 Anda Kalah, <br /> {winner.name} menang!
+				{/if}
+			</h2>
+		</div>
+	{/if}
+
+	{#if game.state.result}
+		<div
+			class="absolute left-1/2 z-20 flex -translate-x-1/2 justify-center transition-all duration-300"
+			style="bottom: calc({mainHandHeight}px + 32px);"
+		>
 			<button
-				class="rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-green-950 transition hover:bg-green-400 active:scale-95"
+				class="rounded-xl bg-green-500 px-6 py-2.5 text-sm font-bold text-green-950 shadow-xl ring-2 ring-green-300/50 transition hover:bg-green-400 active:scale-95"
 				onclick={restartGame}
 			>
 				Main Lagi
@@ -250,49 +248,52 @@
 			bind:clientWidth={boardWidth}
 			bind:clientHeight={boardHeight}
 		>
-			{#if game.state.board.playedTiles.length === 0}
+			{#if game.state.board.playedTiles.length === 0 && !showDropZones}
 				<p class="px-4 text-center text-sm font-bold text-neutral-500 md:text-lg">
 					Meja kosong. Pemain pertama mulai.
 				</p>
-			{:else}
+			{/if}
+
+			<div
+				class="absolute flex h-0 w-0 items-center justify-center transition-transform duration-500 ease-out {game
+					.state.board.playedTiles.length === 0 && !showDropZones
+					? 'invisible opacity-0'
+					: ''}"
+				style="transform: scale({camera.scale});"
+			>
 				<div
 					class="absolute flex h-0 w-0 items-center justify-center transition-transform duration-500 ease-out"
-					style="transform: scale({camera.scale});"
+					style="transform: translate({camera.offsetX}px, {camera.offsetY}px);"
 				>
-					<div
-						class="absolute flex h-0 w-0 items-center justify-center transition-transform duration-500 ease-out"
-						style="transform: translate({camera.offsetX}px, {camera.offsetY}px);"
-					>
-						{#each boardLayout as tile (tile.id)}
-							{@const isVertical = tile.rotation % 180 !== 0}
-							{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
-							<div
-								class="absolute transition-all duration-500 ease-out"
-								style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
-							>
-								<DominoTile {tile} {isVertical} />
-							</div>
-						{/each}
+					{#each boardLayout as tile (tile.id)}
+						{@const isVertical = tile.rotation % 180 !== 0}
+						{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
+						<div
+							class="absolute transition-all duration-500 ease-out"
+							style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
+						>
+							<DominoTile {tile} {isVertical} />
+						</div>
+					{/each}
 
-						{#if showDropZones && leftPreview}
-							<PlacementGhost
-								tile={leftPreview}
-								{dropZoneHovered}
-								onhover={(v) => (dropZoneHovered = v)}
-								onplace={placeTile}
-							/>
-						{/if}
-						{#if showDropZones && rightPreview}
-							<PlacementGhost
-								tile={rightPreview}
-								{dropZoneHovered}
-								onhover={(v) => (dropZoneHovered = v)}
-								onplace={placeTile}
-							/>
-						{/if}
-					</div>
+					{#if showDropZones && leftPreview}
+						<PlacementGhost
+							tile={leftPreview}
+							{dropZoneHovered}
+							onhover={(v) => (dropZoneHovered = v)}
+							onplace={placeTile}
+						/>
+					{/if}
+					{#if showDropZones && rightPreview}
+						<PlacementGhost
+							tile={rightPreview}
+							{dropZoneHovered}
+							onhover={(v) => (dropZoneHovered = v)}
+							onplace={placeTile}
+						/>
+					{/if}
 				</div>
-			{/if}
+			</div>
 		</div>
 	</div>
 
@@ -404,57 +405,4 @@
 			{game}
 		/>
 	</div>
-
-	<!-- <div class="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
-		<div
-			class="flex origin-bottom scale-[0.85] flex-col items-center gap-2 transition-transform duration-300 sm:scale-100"
-		>
-			<div class="pointer-events-auto relative flex flex-col items-center">
-				<PlayerHand
-					player={game.state.players[0]}
-					isMyTurn={game.state.turnIndex === 0}
-					isMain={true}
-					isMarked={markerPlayerId === game.state.players[0].id}
-					winCount={game.getWinCount(game.state.players[0].id)}
-					playableTileIds={new Set(
-						generateLegalMoves(game.state, game.state.players[0].id).map((m) => m.tileId)
-					)}
-					activeTileId={activeTile?.id ?? null}
-					selectedTileId={selectedTile?.id ?? null}
-					ondragstart={handleTileDragStart}
-					ontileclick={handleTileClick}
-				/>
-			</div>
-		</div>
-	</div> -->
 </div>
-
-{#if game.state.result && winner && showResultDialog}
-	<div class="fixed inset-0 z-30 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-		<div
-			class="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-6 shadow-2xl ring-1 ring-white/10"
-		>
-			<p class="text-sm tracking-[0.25em] text-yellow-300 uppercase">Permainan Selesai</p>
-			<h2 class="mt-3 text-3xl font-black text-white">{winner.name} Menang!</h2>
-			<p class="mt-3 text-sm text-neutral-300">
-				{game.state.result.reason === 'empty-hand'
-					? 'Pemain ini menghabiskan semua kartu lebih dulu.'
-					: 'Permainan buntu, dan skor tangan terkecil yang menang.'}
-			</p>
-			<div class="mt-6 flex justify-end gap-3">
-				<button
-					class="rounded-xl bg-neutral-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-600 active:scale-95"
-					onclick={() => (showResultDialog = false)}
-				>
-					Tutup
-				</button>
-				<button
-					class="rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-green-950 transition hover:bg-green-400 active:scale-95"
-					onclick={restartGame}
-				>
-					Main Lagi
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}

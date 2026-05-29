@@ -1,20 +1,21 @@
+<script lang="ts" module>
+	// Minimal local utility to pass empty actions safely for bot interactions
+	function handleSampleDisabled() {}
+</script>
+
 <script lang="ts">
 	import { SvelteGameManager } from '$lib/game.svelte';
 	import { orientTileForSide } from '../engine/board';
 	import { calculateBoardLayout, calculateBoardPreviewPosition } from '../engine/boardLayout';
 	import { generateLegalMoves } from '../engine/moves';
-	import type { Domino } from '../engine/types';
-	import type { TilePosition } from '../engine/types';
+	import type { Domino, TilePosition } from '../engine/types';
 
-	const dotPatterns: Record<number, number[]> = {
-		0: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-		1: [0, 0, 0, 0, 1, 0, 0, 0, 0],
-		2: [1, 0, 0, 0, 0, 0, 0, 0, 1],
-		3: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-		4: [1, 0, 1, 0, 0, 0, 1, 0, 1],
-		5: [1, 0, 1, 0, 1, 0, 1, 0, 1],
-		6: [1, 0, 1, 1, 0, 1, 1, 0, 1]
-	};
+	// Import separated UI Subcomponents
+	import DominoTile from '$lib/components/DominoTile.svelte';
+	import PlacementGhost from '$lib/components/PlacementGhost.svelte';
+	import BotAvatar from '$lib/components/BotAvatar.svelte';
+	import PlayerHand from '$lib/components/PlayerHand.svelte';
+	import MainPlayerHand from '$lib/components/MainPlayerHand.svelte';
 
 	const TILE_W = 112;
 	const TILE_H = 56;
@@ -33,6 +34,10 @@
 	syncStarterMarker();
 	game.setBotPlayers(['1', '2', '3']);
 
+	$effect(() => {
+		$inspect(game.state.board.playedTiles);
+	});
+
 	function restartGame() {
 		const previousWinnerId = game.state.result?.winnerId;
 		game.startGame(previousWinnerId);
@@ -42,13 +47,13 @@
 	}
 
 	// ── Interaction state ──────────────────────────────────────────────────────
-	let draggedTile: Domino | null = $state(null);
-	let selectedTile: Domino | null = $state(null);
+	let draggedTile = $state<Domino | null>(null);
+	let selectedTile = $state<Domino | null>(null);
 	let mouseX = $state(0);
 	let mouseY = $state(0);
-	let dropZoneHovered: 'left' | 'right' | 'center' | null = $state(null);
+	let dropZoneHovered = $state<'left' | 'right' | 'center' | null>(null);
 
-	const activeTile: Domino | null = $derived(draggedTile ?? selectedTile);
+	const activeTile = $derived(draggedTile ?? selectedTile);
 	const isDragging = $derived(draggedTile !== null);
 	const showDropZones = $derived(activeTile !== null && game.state.turnIndex === 0);
 	const leftPreview = $derived.by(() => getPlacementPreview('left'));
@@ -56,13 +61,11 @@
 
 	const winner = $derived.by(() => {
 		if (!game.state.result) return null;
-		return game.state.players.find((player) => player.id === game.state.result?.winnerId) ?? null;
+		return game.state.players.find((p) => p.id === game.state.result?.winnerId) ?? null;
 	});
 
 	const markerPlayerId = $derived.by(() => {
-		if (game.state.result && winner) {
-			return winner.id;
-		}
+		if (game.state.result && winner) return winner.id;
 		return starterPlayerId;
 	});
 
@@ -137,7 +140,6 @@
 		}
 
 		const isMobile = boardWidth < 768;
-
 		const PADDING_W = isMobile ? 40 : 100;
 		const PADDING_H = isMobile ? 280 : 340;
 
@@ -148,9 +150,28 @@
 		const boundingHeight = maxY - minY;
 		const centerX = (minX + maxX) / 2;
 		const centerY = (minY + maxY) / 2;
+
 		const scale = Math.min(1, maxW / (boundingWidth || 1), maxH / (boundingHeight || 1));
 		return { scale, offsetX: -centerX, offsetY: -centerY };
 	});
+
+	// Callback helpers to map child component properties back up to parent state handlers
+	function handleTileDragStart(tile: Domino, e: MouseEvent) {
+		e.preventDefault();
+		draggedTile = tile;
+		selectedTile = null;
+		mouseX = e.clientX;
+		mouseY = e.clientY;
+	}
+
+	function handleTileClick(tile: Domino, e: MouseEvent) {
+		e.stopPropagation();
+		if (selectedTile?.id === tile.id) selectedTile = null;
+		else {
+			selectedTile = tile;
+			draggedTile = null;
+		}
+	}
 </script>
 
 <svelte:window onmousemove={onWindowMouseMove} onmouseup={onWindowMouseUp} />
@@ -160,7 +181,7 @@
 		class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 scale-110 rotate-3 opacity-80 drop-shadow-2xl"
 		style="left:{mouseX}px; top:{mouseY}px;"
 	>
-		{@render DominoTile(draggedTile, false)}
+		<DominoTile tile={draggedTile} isVertical={false} />
 	</div>
 {/if}
 
@@ -169,8 +190,7 @@
 		<div
 			role="button"
 			tabindex="0"
-			class="pointer-events-auto flex h-48 w-72 cursor-copy flex-col items-center justify-center gap-3
-        rounded-2xl transition-colors md:h-64 md:w-96
+			class="pointer-events-auto flex h-48 w-72 cursor-copy flex-col items-center justify-center gap-3 rounded-2xl transition-colors md:h-64 md:w-96
         {dropZoneHovered === 'center'
 				? 'border-4 border-green-300 bg-green-500/50'
 				: 'border-4 border-green-400 bg-green-500/20'}"
@@ -186,191 +206,10 @@
 	</div>
 {/if}
 
-{#snippet DominoTile(tile: { left: number; right: number }, isVertical: boolean)}
-	<div
-		class="flex overflow-hidden rounded-xl bg-neutral-200 shadow-md
-      {isVertical ? 'h-28 w-14 flex-col' : 'h-14 w-28 flex-row'}"
-	>
-		<div
-			class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2 {!isVertical
-				? 'rotate-90'
-				: ''}"
-		>
-			{#each dotPatterns[tile.left] as hasDot, j (j)}
-				<div class="h-2 w-2 rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'}"></div>
-			{/each}
-		</div>
-		<div class="flex items-center justify-center {isVertical ? 'h-px w-full' : 'h-full w-px'}">
-			<div class="{isVertical ? 'h-full w-[70%]' : 'h-[70%] w-full'} bg-red-700/25"></div>
-		</div>
-		<div
-			class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2 {!isVertical
-				? 'rotate-90'
-				: ''}"
-		>
-			{#each dotPatterns[tile.right] as hasDot, j (j)}
-				<div class="h-2 w-2 rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'}"></div>
-			{/each}
-		</div>
-	</div>
-{/snippet}
-
-{#snippet PlacementGhost(tile: {
-	left: number;
-	right: number;
-	x: number;
-	y: number;
-	rotation: number;
-	side: 'left' | 'right';
-})}
-	{@const isVertical = tile.rotation % 180 !== 0}
-	{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
-	<div
-		class="absolute z-40 transition-all duration-500 ease-out"
-		style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
-	>
-		<button
-			class="cursor-copy rounded-2xl border-2 border-dashed border-green-300 bg-green-400/15 p-2
-        opacity-70 shadow-[0_0_24px_rgba(74,222,128,0.28)] transition hover:bg-green-400/25 hover:opacity-95
-        {dropZoneHovered === tile.side ? 'scale-105 opacity-95' : ''}"
-			onmouseenter={() => (dropZoneHovered = tile.side)}
-			onmouseleave={() => (dropZoneHovered = null)}
-			onmousedown={(e) => e.preventDefault()}
-			onmouseup={(e) => {
-				e.stopPropagation();
-				placeTile(tile.side);
-			}}
-			onclick={(e) => {
-				e.stopPropagation();
-				placeTile(tile.side);
-			}}
-		>
-			{@render DominoTile(tile, isVertical)}
-		</button>
-	</div>
-{/snippet}
-
-{#snippet BotAvatar(index: number)}
-	{@const player = game.state.players[index]}
-	{@const isMarked = markerPlayerId === player.id}
-	{@const isMyTurn = game.state.turnIndex === index}
-
-	<div
-		class="pointer-events-auto relative z-20 mb-8 flex w-[64px] scale-[1.8] flex-col items-center justify-center gap-1 rounded-2xl bg-black/70 p-2 shadow-lg ring-1 ring-white/10 backdrop-blur-md md:w-[80px] md:scale-none"
-	>
-		{#if isMyTurn}
-			<div
-				class="pointer-events-none absolute inset-0 animate-pulse rounded-2xl border-2 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
-			></div>
-		{/if}
-
-		<div class="relative">
-			<img
-				src={`https://api.dicebear.com/9.x/bottts/svg?seed=${player.name}`}
-				alt="Avatar AI"
-				class="h-10 w-10 rounded-full bg-neutral-800 object-cover shadow-inner ring-2 ring-white/20 md:h-12 md:w-12"
-			/>
-			{#if isMarked}
-				<span
-					class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-amber-950 shadow-md"
-					>D</span
-				>
-			{/if}
-		</div>
-		<span
-			class="mt-2 w-full rounded-full bg-black/50 py-0.5 text-center text-[12px] font-bold text-yellow-400 ring-1 ring-yellow-400/20"
-		>
-			{game.getWinCount(player.id)}
-		</span>
-	</div>
-{/snippet}
-
-{#snippet MainPlayerBadge()}
-	{@const player = game.state.players[0]}
-	{@const isMarked = markerPlayerId === player.id}
-
-	<div class="relative flex w-fit items-center gap-2">
-		{#if isMarked}
-			<span
-				class="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-xs font-black text-amber-950 shadow-md"
-				>D</span
-			>
-		{/if}
-
-		<div class="flex items-center gap-1.5">
-			<span
-				class="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-black/75 px-2 text-xs font-black text-yellow-400 ring-1 ring-yellow-400/40"
-			>
-				{game.getWinCount(player.id)}
-			</span>
-		</div>
-	</div>
-{/snippet}
-
-{#snippet PlayerHand(index: number, isMain: boolean)}
-	{@const isHandVertical = true}
-	{@const player = game.state.players[index]}
-	{@const isMyTurn = game.state.turnIndex === index}
-	{@const playableTileIds = new Set(
-		generateLegalMoves(game.state, player.id).map((move) => move.tileId)
-	)}
-
-	<div
-		class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.3]' : ''}
-       "
-	>
-		{#if isMain}
-			<div class="origin-bottom scale-[0.8]">
-				{@render MainPlayerBadge()}
-			</div>
-		{/if}
-		<div
-			class="flex flex-row flex-wrap justify-center rounded-2xl transition-all duration-150 md:flex-nowrap {isMain
-				? 'w-[90vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
-				: 'w-[270px] gap-1 p-2 md:w-max md:gap-2 md:p-3'}"
-		>
-			{#each player.hand as tile (tile.id)}
-				{@const isActive = activeTile?.id === tile.id}
-				{@const isPlayable = playableTileIds.has(tile.id)}
-				<button
-					disabled={!isMyTurn || !isPlayable}
-					class="flex cursor-pointer transition-all duration-150 select-none
-				
-        {isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
-        {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
-        {isActive ? 'scale-90 opacity-30' : ''}
-        {isMyTurn && selectedTile !== null && !isActive ? 'rounded-xl ring-2 ring-white/20' : ''}"
-					onmousedown={(e) => {
-						if (!isMyTurn || !isPlayable) return;
-						e.preventDefault();
-						draggedTile = tile;
-						selectedTile = null;
-						mouseX = e.clientX;
-						mouseY = e.clientY;
-					}}
-					onclick={(e) => {
-						if (!isMyTurn || !isPlayable) return;
-						e.stopPropagation();
-						if (selectedTile?.id === tile.id) selectedTile = null;
-						else {
-							selectedTile = tile;
-							draggedTile = null;
-						}
-					}}
-				>
-					{@render DominoTile(tile, isHandVertical)}
-				</button>
-			{/each}
-		</div>
-	</div>
-{/snippet}
-
 <div
 	role="presentation"
 	class="relative flex h-screen w-full items-center justify-center overflow-hidden bg-neutral-900 text-white select-none"
-	onclick={() => {
-		selectedTile = null;
-	}}
+	onclick={() => (selectedTile = null)}
 >
 	<div
 		class="absolute top-2 left-2 z-20 flex flex-col items-start gap-2 text-sm md:top-6 md:left-6"
@@ -429,14 +268,25 @@
 								class="absolute transition-all duration-500 ease-out"
 								style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
 							>
-								{@render DominoTile(tile, isVertical)}
+								<DominoTile {tile} {isVertical} />
 							</div>
 						{/each}
+
 						{#if showDropZones && leftPreview}
-							{@render PlacementGhost(leftPreview)}
+							<PlacementGhost
+								tile={leftPreview}
+								{dropZoneHovered}
+								onhover={(v) => (dropZoneHovered = v)}
+								onplace={placeTile}
+							/>
 						{/if}
 						{#if showDropZones && rightPreview}
-							{@render PlacementGhost(rightPreview)}
+							<PlacementGhost
+								tile={rightPreview}
+								{dropZoneHovered}
+								onhover={(v) => (dropZoneHovered = v)}
+								onplace={placeTile}
+							/>
 						{/if}
 					</div>
 				</div>
@@ -450,9 +300,26 @@
 		<div
 			class="flex origin-top-left scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
 		>
-			{@render BotAvatar(3)}
+			<BotAvatar
+				player={game.state.players[3]}
+				isMyTurn={game.state.turnIndex === 3}
+				isMarked={markerPlayerId === game.state.players[3].id}
+				winCount={game.getWinCount(game.state.players[3].id)}
+			/>
 			<div class="pointer-events-auto">
-				{@render PlayerHand(3, false)}
+				<PlayerHand
+					player={game.state.players[3]}
+					isMyTurn={game.state.turnIndex === 3}
+					isMarked={markerPlayerId === game.state.players[3].id}
+					winCount={game.getWinCount(game.state.players[3].id)}
+					playableTileIds={new Set(
+						generateLegalMoves(game.state, game.state.players[3].id).map((m) => m.tileId)
+					)}
+					activeTileId={activeTile?.id ?? null}
+					selectedTileId={selectedTile?.id ?? null}
+					ondragstart={handleSampleDisabled}
+					ontileclick={handleSampleDisabled}
+				/>
 			</div>
 		</div>
 	</div>
@@ -461,9 +328,26 @@
 		<div
 			class="flex origin-top scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
 		>
-			{@render BotAvatar(2)}
+			<BotAvatar
+				player={game.state.players[2]}
+				isMyTurn={game.state.turnIndex === 2}
+				isMarked={markerPlayerId === game.state.players[2].id}
+				winCount={game.getWinCount(game.state.players[2].id)}
+			/>
 			<div class="pointer-events-auto">
-				{@render PlayerHand(2, false)}
+				<PlayerHand
+					player={game.state.players[2]}
+					isMyTurn={game.state.turnIndex === 2}
+					isMarked={markerPlayerId === game.state.players[2].id}
+					winCount={game.getWinCount(game.state.players[2].id)}
+					playableTileIds={new Set(
+						generateLegalMoves(game.state, game.state.players[2].id).map((m) => m.tileId)
+					)}
+					activeTileId={activeTile?.id ?? null}
+					selectedTileId={selectedTile?.id ?? null}
+					ondragstart={handleSampleDisabled}
+					ontileclick={handleSampleDisabled}
+				/>
 			</div>
 		</div>
 	</div>
@@ -474,22 +358,70 @@
 		<div
 			class="flex origin-top-right scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
 		>
-			{@render BotAvatar(1)}
+			<BotAvatar
+				player={game.state.players[1]}
+				isMyTurn={game.state.turnIndex === 1}
+				isMarked={markerPlayerId === game.state.players[1].id}
+				winCount={game.getWinCount(game.state.players[1].id)}
+			/>
 			<div class="pointer-events-auto">
-				{@render PlayerHand(1, false)}
+				<PlayerHand
+					player={game.state.players[1]}
+					isMyTurn={game.state.turnIndex === 1}
+					isMarked={markerPlayerId === game.state.players[1].id}
+					winCount={game.getWinCount(game.state.players[1].id)}
+					playableTileIds={new Set(
+						generateLegalMoves(game.state, game.state.players[1].id).map((m) => m.tileId)
+					)}
+					activeTileId={activeTile?.id ?? null}
+					selectedTileId={selectedTile?.id ?? null}
+					ondragstart={handleSampleDisabled}
+					ontileclick={handleSampleDisabled}
+				/>
 			</div>
 		</div>
 	</div>
 
-	<div class="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+	<div class="absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+		<MainPlayerHand
+			player={game.state.players[0]}
+			isMyTurn={game.state.turnIndex === 0}
+			isMain={true}
+			isMarked={markerPlayerId === game.state.players[0].id}
+			winCount={game.getWinCount(game.state.players[0].id)}
+			playableTileIds={new Set(
+				generateLegalMoves(game.state, game.state.players[0].id).map((m) => m.tileId)
+			)}
+			activeTileId={activeTile?.id ?? null}
+			selectedTileId={selectedTile?.id ?? null}
+			ondragstart={handleTileDragStart}
+			ontileclick={handleTileClick}
+			{game}
+		/>
+	</div>
+
+	<!-- <div class="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
 		<div
 			class="flex origin-bottom scale-[0.85] flex-col items-center gap-2 transition-transform duration-300 sm:scale-100"
 		>
 			<div class="pointer-events-auto relative flex flex-col items-center">
-				{@render PlayerHand(0, true)}
+				<PlayerHand
+					player={game.state.players[0]}
+					isMyTurn={game.state.turnIndex === 0}
+					isMain={true}
+					isMarked={markerPlayerId === game.state.players[0].id}
+					winCount={game.getWinCount(game.state.players[0].id)}
+					playableTileIds={new Set(
+						generateLegalMoves(game.state, game.state.players[0].id).map((m) => m.tileId)
+					)}
+					activeTileId={activeTile?.id ?? null}
+					selectedTileId={selectedTile?.id ?? null}
+					ondragstart={handleTileDragStart}
+					ontileclick={handleTileClick}
+				/>
 			</div>
 		</div>
-	</div>
+	</div> -->
 </div>
 
 {#if game.state.result && winner && showResultDialog}

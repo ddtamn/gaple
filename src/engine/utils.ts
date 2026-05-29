@@ -38,3 +38,36 @@ export function serializeGameState(state: unknown): string {
 export function loadGameState(serialized: string): unknown {
 	return JSON.parse(serialized);
 }
+
+/**
+ * Menghitung sisa kartu untuk setiap angka (0-6) yang tidak terlihat oleh pemain utama.
+ * * @param playedTiles Array kartu yang sudah ada di atas meja (board)
+ * @param playerHand Array kartu yang ada di tangan pemain (index 0)
+ * @returns Object berisi sisa kartu untuk masing-masing angka (0 sampai 6)
+ */
+export function getRemainingTilesCount(
+	playedTiles: Domino[],
+	playerHand: Domino[]
+): Record<number, number> {
+	// Standar domino double-six: masing-masing angka (0-6) ada di 7 kartu berbeda
+	const remainingCounts: Record<number, number> = { 0: 7, 1: 7, 2: 7, 3: 7, 4: 7, 5: 7, 6: 7 };
+
+	// Fungsi helper untuk mengurangi hitungan berdasarkan angka di kiri dan kanan kartu
+	const processTile = (tile: Domino) => {
+		// Kurangi hitungan untuk angka sebelah kiri
+		remainingCounts[tile.left] -= 1;
+
+		// Jika bukan kartu balak/kembar, kurangi juga hitungan untuk angka sebelah kanan
+		if (tile.left !== tile.right) {
+			remainingCounts[tile.right] -= 1;
+		}
+	};
+
+	// 1. Kurangi dengan kartu yang sudah terbuka di meja
+	playedTiles.forEach(processTile);
+
+	// 2. Kurangi dengan kartu yang sedang dipegang di tangan pemain utama
+	playerHand.forEach(processTile);
+
+	return remainingCounts;
+}

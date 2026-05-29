@@ -1,6 +1,7 @@
+import { SvelteURL } from 'svelte/reactivity';
 import { GameManager as PureGameManager } from '../engine/game';
-import { selectAiMove } from '../engine/ai';
 import type { GameState, Move } from '../engine/types';
+// import { selectAiMove } from '../engine/ai';
 
 export class SvelteGameManager {
 	private engine: PureGameManager;
@@ -10,12 +11,20 @@ export class SvelteGameManager {
 	private winCounts: Record<string, number> = {};
 	private lastRecordedResult: GameState['result'] = null;
 
+	private aiWorker: Worker | null = null;
+
 	// Gunakan $state untuk membuat UI bereaksi saat variabel ini ditimpa (di-assign ulang)
 	public state = $state<GameState>() as GameState;
 
 	constructor(playerNames: string[], seed?: string) {
 		this.engine = new PureGameManager(playerNames, seed);
 		this.state = this.engine.state;
+
+		if (typeof window !== 'undefined') {
+			this.aiWorker = new Worker(new SvelteURL('./ai.worker.ts', import.meta.url), {
+				type: 'module'
+			});
+		}
 	}
 
 	startGame(previousWinnerId?: string) {
@@ -45,6 +54,25 @@ export class SvelteGameManager {
 		this.maybeRunBot();
 	}
 
+	private getAiMoveFromWorker(state: GameState, playerId: string): Promise<Move | null> {
+		return new Promise((resolve, reject) => {
+			if (!this.aiWorker) return resolve(null);
+
+			const handleMessage = (e: MessageEvent) => {
+				this.aiWorker!.removeEventListener('message', handleMessage);
+				if (e.data.type === 'SUCCESS') resolve(e.data.move);
+				else reject(e.data.error);
+			};
+
+			this.aiWorker.addEventListener('message', handleMessage);
+
+			// PENTING: Kita harus menghilangkan Svelte $state Proxy sebelum mengirimnya ke Worker.
+			// Menggunakan JSON.parse(JSON.stringify) adalah cara teraman menghindari 'DataCloneError'.
+			const pureState = JSON.parse(JSON.stringify(state));
+			this.aiWorker.postMessage({ state: pureState, playerId });
+		});
+	}
+
 	private isBotTurn() {
 		return !this.engine.state.result && this.botIds.includes(this.engine.currentPlayer.id);
 	}
@@ -64,36 +92,29 @@ export class SvelteGameManager {
 		);
 	}
 
-	private runBotTurn() {
+	private async runBotTurn() {
 		if (this.engine.state.result) return;
 
 		const currentPlayer = this.engine.currentPlayer;
 		try {
-			// Panggil AI Monte Carlo
-			const move = selectAiMove(this.state, currentPlayer.id);
+			// Tunggu Worker selesai berpikir (UI Anda TIDAK akan freeze saat ini terjadi!)
+			const move = await this.getAiMoveFromWorker(this.state, currentPlayer.id);
 
 			if (move) {
-				// Coba pasang batu ke sisi yang dipilih AI
 				let success = this.nextTurn(move.playerId, move.tileId, move.side);
-
-				// JIKA DITOLAK: Berarti sisi-nya terbalik! Coba pasang ke sisi sebelahnya.
 				if (!success) {
 					const otherSide = move.side === 'left' ? 'right' : 'left';
 					success = this.nextTurn(move.playerId, move.tileId, otherSide);
 				}
-
-				// JIKA MASIH DITOLAK: Berarti batunya benar-benar tidak valid. Paksa Pass agar tidak macet.
 				if (!success) {
 					console.warn('AI mencoba langkah tidak valid, memaksa Pass.');
 					this.passTurn(currentPlayer.id);
 				}
 			} else {
-				// Jika AI mengembalikan null, berarti tidak ada kartu yang bisa jalan
 				this.passTurn(currentPlayer.id);
 			}
 		} catch (e) {
-			console.error('AI Error:', e);
-			// Fallback aman: Jika otak AI error, paksa Pass agar UI pemain tidak freeze
+			console.error('AI Worker Error:', e);
 			this.passTurn(currentPlayer.id);
 		}
 	}

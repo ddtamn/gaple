@@ -230,14 +230,21 @@
 
 	{#if game.state.result && winner}
 		<div
-			class="absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center justify-center gap-2 transition-all duration-300"
-			style="bottom: calc({mainHandHeight}px + 32px);"
+			class="absolute left-1/2 z-20 flex w-full -translate-x-1/2 flex-col items-center justify-center gap-2 transition-all duration-300"
+			style="bottom: calc({mainHandHeight}px + 16px);"
 		>
-			{#if winner.id === game.state.players[0].id}
-				🎉 Anda Menang! 🎉
-			{:else}
-				😞 Anda Kalah, <br /> {winner.name} menang!
-			{/if}
+			<div class="w-fit rounded-md bg-black/35 p-1 py-2 ring ring-slate-50/10">
+				<h2
+					class="text-sm font-bold tracking-wide drop-shadow-[0_4px_6px_rgba(0,0,0,0.7)] md:text-4xl
+				{winner.id === game.state.players[0].id ? 'text-yellow-400' : 'text-red-500'}"
+				>
+					{#if winner.id === game.state.players[0].id}
+						🎉 Anda Menang! 🎉
+					{:else}
+						😞 Anda Kalah, {winner.name} menang!
+					{/if}
+				</h2>
+			</div>
 			<button
 				class="rounded-xl bg-green-500 px-6 py-2.5 text-sm font-bold text-green-950 shadow-xl ring-2 ring-green-300/50 transition hover:bg-green-400 active:scale-95"
 				onclick={restartGame}

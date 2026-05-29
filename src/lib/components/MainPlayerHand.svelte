@@ -68,29 +68,31 @@
 	</div>
 </div>
 
-<div
-	class="flex w-full items-center justify-between gap-2 rounded-md bg-black/25 p-1 px-4 text-slate-50/35"
->
-	<div class="flex items-center justify-center gap-2">
-		{#each remainings as item (item.value)}
-			<div class="flex items-center justify-center gap-px">
-				<TileIcon value={item.value} size="16" />
-				<p class="text-xs">{item.remain}</p>
-			</div>
-		{/each}
-	</div>
-	<div class="flex items-center gap-2 text-xs">
-		{#if isMarked}
+<div class="flex w-full items-center justify-between gap-2 px-2 text-slate-50/35">
+	<div
+		class="flex w-full items-center justify-between rounded-md bg-black/35 p-1 px-2 ring ring-slate-50/10"
+	>
+		<div class="flex items-center justify-center gap-2">
+			{#each remainings as item (item.value)}
+				<div class="flex items-center justify-center gap-px">
+					<TileIcon value={item.value} size="16" />
+					<p class="text-xs">{item.remain}</p>
+				</div>
+			{/each}
+		</div>
+		<div class="flex items-center gap-2 text-xs">
+			{#if isMarked}
+				<span
+					class="flex size-5 items-center justify-center rounded-md bg-amber-400 text-xs font-black text-amber-950 shadow-md"
+					>D</span
+				>
+			{/if}
 			<span
-				class="flex size-5 items-center justify-center rounded-md bg-amber-400 text-xs font-black text-amber-950 shadow-md"
-				>D</span
+				class="flex size-5 min-w-[24px] items-center justify-center rounded-md bg-black/75 px-2 text-xs font-black text-yellow-400 ring-1 ring-yellow-400/40"
 			>
-		{/if}
-		<span
-			class="flex size-5 min-w-[24px] items-center justify-center rounded-md bg-black/75 px-2 text-xs font-black text-yellow-400 ring-1 ring-yellow-400/40"
-		>
-			{winCount}
-		</span>
+				{winCount}
+			</span>
+		</div>
 	</div>
 </div>
 

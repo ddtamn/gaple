@@ -9,7 +9,7 @@ import { biasTileWeights, createBelief } from './ai/belief';
 import { estimateHiddenHandWeight } from './ai/inference';
 import { shouldUseEndgameSolver, solveEndgameMove } from './ai/endgame';
 
-const ITERATIONS_PER_MOVE = 140;
+const ITERATIONS_PER_MOVE = 350;
 const MAX_PLAYOUT_TURNS = 120;
 const HUMAN_PLAYER_ID = '0';
 

@@ -1,7 +1,7 @@
-import { SvelteURL } from 'svelte/reactivity';
 import { GameManager as PureGameManager } from '../engine/game';
 import type { GameState, Move } from '../engine/types';
 // import { selectAiMove } from '../engine/ai';
+import AiWorker from './ai.worker?worker';
 
 export class SvelteGameManager {
 	private engine: PureGameManager;
@@ -21,9 +21,7 @@ export class SvelteGameManager {
 		this.state = this.engine.state;
 
 		if (typeof window !== 'undefined') {
-			this.aiWorker = new Worker(new SvelteURL('./ai.worker.ts', import.meta.url), {
-				type: 'module'
-			});
+			this.aiWorker = new AiWorker();
 		}
 	}
 

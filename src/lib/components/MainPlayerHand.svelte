@@ -1,4 +1,5 @@
 <script lang="ts">
+	import emblaCarouselSvelte from 'embla-carousel-svelte';
 	import { getRemainingTilesCount } from '../../engine/utils';
 	import TileIcon from '$lib/icons/TileIcon.svelte';
 	import DominoTile from './DominoTile.svelte';
@@ -27,32 +28,44 @@
 			remain: tracker[value]
 		}))
 	);
+
+	// Konfigurasi Embla Carousel
+	const emblaOptions = {
+		align: 'center', // Membuat kartu aktif/terdekat selalu berada di tengah
+		containScroll: 'trimSnaps', // Menghapus ruang kosong berlebih di ujung scroll
+		dragFree: true // Kartu akan otomatis "magnetis" berhenti pas di tengah (snap)
+	};
 </script>
 
-<div class="mb-2 flex w-full flex-wrap items-center justify-center gap-2">
-	{#each player.hand as tile (tile.id)}
-		{@const isActive = activeTileId === tile.id}
-		{@const isPlayable = playableTileIds.has(tile.id)}
-		<button
-			disabled={!isMyTurn || !isPlayable}
-			class="flex cursor-pointer transition-all duration-150 select-none hover:-translate-y-2
+<div
+	class="embla mb-2 w-full overflow-hidden px-2 py-2 md:max-w-2xl"
+	use:emblaCarouselSvelte={emblaOptions}
+>
+	<div class="embla__container flex gap-3">
+		{#each player.hand as tile (tile.id)}
+			{@const isActive = activeTileId === tile.id}
+			{@const isPlayable = playableTileIds.has(tile.id)}
+			<button
+				disabled={!isMyTurn || !isPlayable}
+				class="embla__slide flex flex-[0_0_auto] cursor-pointer transition-all duration-150 select-none hover:-translate-y-2
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
                 {isActive ? 'scale-90 opacity-30' : ''}
                 {isMyTurn && selectedTileId !== null && !isActive
-				? 'rounded-xl ring-2 ring-white/20'
-				: ''}"
-			onmousedown={(e) => {
-				if (!isMyTurn || !isPlayable) return;
-				ondragstart(tile, e);
-			}}
-			onclick={(e) => {
-				if (!isMyTurn || !isPlayable) return;
-				ontileclick(tile, e);
-			}}
-		>
-			<DominoTile {tile} isVertical={true} />
-		</button>
-	{/each}
+					? 'rounded-xl ring-2 ring-white/20'
+					: ''}"
+				onmousedown={(e) => {
+					if (!isMyTurn || !isPlayable) return;
+					ondragstart(tile, e);
+				}}
+				onclick={(e) => {
+					if (!isMyTurn || !isPlayable) return;
+					ontileclick(tile, e);
+				}}
+			>
+				<DominoTile {tile} isVertical={true} />
+			</button>
+		{/each}
+	</div>
 </div>
 
 <div
@@ -80,3 +93,10 @@
 		</span>
 	</div>
 </div>
+
+<style>
+	.embla__container {
+		/* Mengizinkan halaman web utama di-scroll vertikal saat user mengusap area kartu */
+		touch-action: pan-y;
+	}
+</style>

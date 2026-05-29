@@ -213,7 +213,7 @@
 		{/if}
 	</div>
 
-	{#if game.state.result && winner}
+	<!-- {#if game.state.result && winner}
 		<div class="absolute top-40 left-1/2 z-20 w-full -translate-x-1/2 p-4 text-center md:top-40">
 			<h2
 				class="text-sm font-black tracking-wide drop-shadow-[0_4px_6px_rgba(0,0,0,0.7)] md:text-4xl
@@ -226,13 +226,18 @@
 				{/if}
 			</h2>
 		</div>
-	{/if}
+	{/if} -->
 
-	{#if game.state.result}
+	{#if game.state.result && winner}
 		<div
-			class="absolute left-1/2 z-20 flex -translate-x-1/2 justify-center transition-all duration-300"
+			class="absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center justify-center gap-2 transition-all duration-300"
 			style="bottom: calc({mainHandHeight}px + 32px);"
 		>
+			{#if winner.id === game.state.players[0].id}
+				🎉 Anda Menang! 🎉
+			{:else}
+				😞 Anda Kalah, <br /> {winner.name} menang!
+			{/if}
 			<button
 				class="rounded-xl bg-green-500 px-6 py-2.5 text-sm font-bold text-green-950 shadow-xl ring-2 ring-green-300/50 transition hover:bg-green-400 active:scale-95"
 				onclick={restartGame}
@@ -387,7 +392,7 @@
 
 	<div
 		bind:clientHeight={mainHandHeight}
-		class="absolute bottom-2 left-1/2 z-10 w-full -translate-x-1/2 px-8 md:w-fit"
+		class="absolute bottom-2 left-1/2 z-10 w-full -translate-x-1/2 md:w-fit"
 	>
 		<MainPlayerHand
 			player={game.state.players[0]}

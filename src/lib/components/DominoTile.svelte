@@ -18,16 +18,19 @@
 </script>
 
 <div
-	class="flex overflow-hidden rounded-xl bg-neutral-200 shadow-md
+	class="flex overflow-hidden rounded-xl bg-neutral-300 shadow-md
       {isVertical ? 'h-28 w-14 flex-col' : 'h-14 w-28 flex-row'}"
 >
 	<div
-		class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2 {!isVertical
+		class="grid h-full min-h-0 w-full min-w-0 flex-1 grid-cols-3 grid-rows-3 place-items-center gap-0.5 p-1.5 {!isVertical
 			? 'rotate-90'
 			: ''}"
 	>
 		{#each dotPatterns[tile.left] as hasDot, j (j)}
-			<div class="h-2 w-2 rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'}"></div>
+			<div
+				class="rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'} 
+				{tile.left === 1 && hasDot ? 'h-3.5 w-3.5' : 'h-2 w-2'}"
+			></div>
 		{/each}
 	</div>
 
@@ -36,12 +39,15 @@
 	</div>
 
 	<div
-		class="grid flex-1 grid-cols-3 grid-rows-3 place-items-center gap-1 p-2 {!isVertical
+		class="grid h-full min-h-0 w-full min-w-0 flex-1 grid-cols-3 grid-rows-3 place-items-center gap-0.5 p-1.5 {!isVertical
 			? 'rotate-90'
 			: ''}"
 	>
 		{#each dotPatterns[tile.right] as hasDot, j (j)}
-			<div class="h-2 w-2 rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'}"></div>
+			<div
+				class="rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'} 
+				{tile.right === 1 && hasDot ? 'h-3.5 w-3.5' : 'h-2 w-2'}"
+			></div>
 		{/each}
 	</div>
 </div>

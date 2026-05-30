@@ -120,6 +120,8 @@ export function replayFromMoves(config: ReplayConfig): GameState {
 					points: score.points,
 					winType: score.winType
 				};
+				// Match game engine: set turnIndex to winner index
+				state.turnIndex = state.players.findIndex((p) => p.id === score.winnerId);
 				break;
 			}
 

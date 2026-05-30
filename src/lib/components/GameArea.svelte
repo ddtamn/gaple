@@ -19,9 +19,36 @@
 		onExit
 	}: { rounds: number | string; mode: string; onExit: () => void } = $props();
 
-	// ── Determine if multiplayer ──────────────────────────────────────
-	const isMultiplayer = $derived(mode === 'multiplayer');
-	const mp = isMultiplayer ? getMultiplayer() : null;
+	// ── Determine if multiplayer (coop modes use PartyKit) ─────────────
+	const isMultiplayer = $derived(mode === 'coop-vs-ai' || mode === 'coop-vs-coop');
+	const mp = $derived(isMultiplayer ? getMultiplayer() : null);
+
+	// Coop-specific helpers
+	const isCoopMode = $derived(mode === 'coop-vs-ai' || mode === 'coop-vs-coop');
+
+	// In multiplayer, find our player index in the game state (for POV rotation)
+	const myPlayerIndex = $derived(isMultiplayer ? (mp?.myPlayerIndex ?? -1) : 0);
+
+	// Helper: map position offset (0=bottom, 1=right, 2=top, 3=left) to actual player index
+	// In single-player, human is always index 0. In multiplayer, rotate based on myPlayerIndex.
+	function p(offset: number) {
+		const players = currentGameState?.players;
+		if (!players || players.length === 0) return null;
+		if (isMultiplayer && myPlayerIndex >= 0) {
+			return players[(myPlayerIndex + offset) % players.length];
+		}
+		return players[offset];
+	}
+
+	// Coop visibility: teammates (same teamId) see each other's cards; opponents see card backs.
+	// In vs-ai mode, all cards are visible.
+	function getShowCardFaces(gamePlayerIndex: number): boolean {
+		if (!isCoopMode) return true;
+		const mainPlayer = p(0);
+		const targetPlayer = currentGameState?.players[gamePlayerIndex];
+		if (!mainPlayer || !targetPlayer) return true;
+		return mainPlayer.teamId === targetPlayer.teamId;
+	}
 
 	const TILE_W = 112;
 	const TILE_H = 56;
@@ -59,8 +86,8 @@
 
 	function resolveTeamConfig(gameMode: string): TeamConfig | undefined {
 		if (gameMode === 'vs-ai') return undefined;
-		if (gameMode === 'multiplayer') return undefined;
-		return { mode: 'teams', layout: [[0, 2], [1, 3]] };
+		// For coop modes, team config comes from the server via the game state
+		return undefined;
 	}
 
 	let showResultDialog = $state(true);
@@ -97,10 +124,11 @@
 	// Show drop zones when it's the player's turn
 	const isMyTurn = $derived(
 		isMultiplayer
-			? mp?.myPlayerId === currentGameState?.players[currentGameState?.turnIndex]?.id
+			? currentGameState?.turnIndex === myPlayerIndex
 			: currentGameState?.turnIndex === 0
 	);
 	const showDropZones = $derived(activeTile !== null && !!isMyTurn && !currentGameState?.result);
+
 	const leftPreview = $derived.by(() => getPlacementPreview('left'));
 	const rightPreview = $derived.by(() => getPlacementPreview('right'));
 
@@ -153,8 +181,7 @@
 
 	function getPlacementPreview(side: 'left' | 'right') {
 		if (!activeTile || !currentGameState || currentGameState.result) return null;
-		if (!isMultiplayer && currentGameState.turnIndex !== 0) return null;
-		if (isMultiplayer && mp && currentGameState.players[currentGameState.turnIndex]?.id !== mp.myPlayerId) return null;
+		if (currentGameState.turnIndex !== myPlayerIndex) return null;
 
 		if (currentGameState.board.playedTiles.length === 0) {
 			if (side === 'left') return null;
@@ -296,9 +323,9 @@
 		>
 			<h2
 				class="font-headline text-3xl font-bold tracking-wide md:text-5xl
-				{winner.id === currentGameState.players[0].id ? 'text-primary' : 'text-stone-200'}"
+				{winner.id === (p(0)?.id ?? '') ? 'text-primary' : 'text-stone-200'}"
 			>
-				{#if !isMultiplayer && winner.id === currentGameState.players[0].id}
+				{#if winner.id === (p(0)?.id ?? '')}
 					🎉 Anda Menang Ronde Ini!
 				{:else}
 					{winner.name} Menang!
@@ -394,27 +421,32 @@
 			class="flex origin-top-left scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
 		>
 			{#if currentGameState}
+			{@const leftPlayer = p(3)}
+			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
+				{#if leftPlayer}
 				<BotAvatar
-					player={currentGameState.players[3]}
-					isMyTurn={currentGameState.turnIndex === 3}
-					isMarked={markerPlayerId === currentGameState.players[3].id}
-					winCount={currentGameState.pointStandings[currentGameState.players[3].id] || 0}
+					player={leftPlayer}
+					isMyTurn={currentGameState.turnIndex === leftTurnIndex}
+					isMarked={markerPlayerId === leftPlayer.id}
+					winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
 				/>
 				<div class="pointer-events-auto">
 					<PlayerHand
-						player={currentGameState.players[3]}
-						isMyTurn={currentGameState.turnIndex === 3}
-						isMarked={markerPlayerId === currentGameState.players[3].id}
-						winCount={currentGameState.pointStandings[currentGameState.players[3].id] || 0}
+						player={leftPlayer}
+						isMyTurn={currentGameState.turnIndex === leftTurnIndex}
+						isMarked={markerPlayerId === leftPlayer.id}
+						winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
 						playableTileIds={new Set(
-							generateLegalMoves(currentGameState, currentGameState.players[3].id).map((m) => m.tileId)
+							generateLegalMoves(currentGameState, leftPlayer.id).map((m) => m.tileId)
 						)}
 						activeTileId={activeTile?.id ?? null}
 						selectedTileId={selectedTile?.id ?? null}
 						ondragstart={handleSampleDisabled}
 						ontileclick={handleSampleDisabled}
+						showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
 					/>
 				</div>
+			{/if}
 			{/if}
 		</div>
 	</div>
@@ -424,27 +456,32 @@
 			class="flex origin-top scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
 		>
 			{#if currentGameState}
+			{@const topPlayer = p(2)}
+			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
+				{#if topPlayer}
 				<BotAvatar
-					player={currentGameState.players[2]}
-					isMyTurn={currentGameState.turnIndex === 2}
-					isMarked={markerPlayerId === currentGameState.players[2].id}
-					winCount={currentGameState.pointStandings[currentGameState.players[2].id] || 0}
+					player={topPlayer}
+					isMyTurn={currentGameState.turnIndex === topTurnIndex}
+					isMarked={markerPlayerId === topPlayer.id}
+					winCount={currentGameState.pointStandings[topPlayer.id] || 0}
 				/>
 				<div class="pointer-events-auto">
 					<PlayerHand
-						player={currentGameState.players[2]}
-						isMyTurn={currentGameState.turnIndex === 2}
-						isMarked={markerPlayerId === currentGameState.players[2].id}
-						winCount={currentGameState.pointStandings[currentGameState.players[2].id] || 0}
+						player={topPlayer}
+						isMyTurn={currentGameState.turnIndex === topTurnIndex}
+						isMarked={markerPlayerId === topPlayer.id}
+						winCount={currentGameState.pointStandings[topPlayer.id] || 0}
 						playableTileIds={new Set(
-							generateLegalMoves(currentGameState, currentGameState.players[2].id).map((m) => m.tileId)
+							generateLegalMoves(currentGameState, topPlayer.id).map((m) => m.tileId)
 						)}
 						activeTileId={activeTile?.id ?? null}
 						selectedTileId={selectedTile?.id ?? null}
 						ondragstart={handleSampleDisabled}
 						ontileclick={handleSampleDisabled}
+						showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
 					/>
 				</div>
+			{/if}
 			{/if}
 		</div>
 	</div>
@@ -456,27 +493,32 @@
 			class="flex origin-top-right scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
 		>
 			{#if currentGameState}
+			{@const rightPlayer = p(1)}
+			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
+				{#if rightPlayer}
 				<BotAvatar
-					player={currentGameState.players[1]}
-					isMyTurn={currentGameState.turnIndex === 1}
-					isMarked={markerPlayerId === currentGameState.players[1].id}
-					winCount={currentGameState.pointStandings[currentGameState.players[1].id] || 0}
+					player={rightPlayer}
+					isMyTurn={currentGameState.turnIndex === rightTurnIndex}
+					isMarked={markerPlayerId === rightPlayer.id}
+					winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
 				/>
 				<div class="pointer-events-auto">
 					<PlayerHand
-						player={currentGameState.players[1]}
-						isMyTurn={currentGameState.turnIndex === 1}
-						isMarked={markerPlayerId === currentGameState.players[1].id}
-						winCount={currentGameState.pointStandings[currentGameState.players[1].id] || 0}
+						player={rightPlayer}
+						isMyTurn={currentGameState.turnIndex === rightTurnIndex}
+						isMarked={markerPlayerId === rightPlayer.id}
+						winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
 						playableTileIds={new Set(
-							generateLegalMoves(currentGameState, currentGameState.players[1].id).map((m) => m.tileId)
+							generateLegalMoves(currentGameState, rightPlayer.id).map((m) => m.tileId)
 						)}
 						activeTileId={activeTile?.id ?? null}
 						selectedTileId={selectedTile?.id ?? null}
 						ondragstart={handleSampleDisabled}
 						ontileclick={handleSampleDisabled}
+						showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
 					/>
 				</div>
+			{/if}
 			{/if}
 		</div>
 	</div>
@@ -486,21 +528,26 @@
 		class="absolute bottom-2 left-1/2 z-10 w-full -translate-x-1/2  md:w-fit"
 	>
 		{#if currentGameState}
-			<MainPlayerHand
-				player={currentGameState.players[0]}
-				isMyTurn={currentGameState.turnIndex === 0}
-				isMain={true}
-				isMarked={markerPlayerId === currentGameState.players[0].id}
-				winCount={currentGameState.pointStandings[currentGameState.players[0].id] || 0}
-				playableTileIds={new Set(
-					generateLegalMoves(currentGameState, currentGameState.players[0].id).map((m) => m.tileId)
-				)}
-				activeTileId={activeTile?.id ?? null}
-				selectedTileId={selectedTile?.id ?? null}
-				ondragstart={handleTileDragStart}
-				ontileclick={handleTileClick}
-				game={game}
-			/>
+			{@const mainPlayer = p(0)}
+				{#if mainPlayer}
+				<MainPlayerHand
+					player={mainPlayer}
+					isMyTurn={currentGameState.turnIndex === myPlayerIndex}
+					isMain={true}
+					isMarked={markerPlayerId === mainPlayer.id}
+					winCount={currentGameState.pointStandings[mainPlayer.id] || 0}
+					playableTileIds={new Set(
+						generateLegalMoves(currentGameState, mainPlayer.id).map((m) => m.tileId)
+					)}
+					activeTileId={activeTile?.id ?? null}
+					selectedTileId={selectedTile?.id ?? null}
+					ondragstart={handleTileDragStart}
+					ontileclick={handleTileClick}
+					{game}
+					{currentGameState}
+				/>
+
+			{/if}
 		{/if}
 	</div>
 </div>

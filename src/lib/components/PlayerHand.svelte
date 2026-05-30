@@ -11,6 +11,7 @@
 		playableTileIds: Set<string>;
 		activeTileId: string | null;
 		selectedTileId: string | null;
+		showCardFaces?: boolean;
 		ondragstart: (tile: Domino, e: MouseEvent) => void;
 		ontileclick: (tile: Domino, e: MouseEvent) => void;
 	}
@@ -24,6 +25,7 @@
 		playableTileIds,
 		activeTileId,
 		selectedTileId,
+		showCardFaces = true,
 		ondragstart,
 		ontileclick
 	}: Props = $props();
@@ -39,13 +41,14 @@
 	>
 		{#each player.hand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
-			{@const isPlayable = playableTileIds.has(tile.id)}
+			{@const isPlayable = showCardFaces && playableTileIds.has(tile.id)}
+			{@const tileDisabled = !isMyTurn || !isPlayable}
 			<button
-				disabled={!isMyTurn || !isPlayable}
+				disabled={tileDisabled}
 				class="flex cursor-pointer transition-all duration-150 select-none
                 {isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
-                {isActive ? 'scale-90 opacity-30' : ''}
+                {isActive && showCardFaces ? 'scale-90 opacity-30' : ''}
                 {isMyTurn && selectedTileId !== null && !isActive
 					? 'rounded-lg ring-2 ring-primary/20'
 					: ''}"
@@ -58,7 +61,18 @@
 					ontileclick(tile, e);
 				}}
 			>
-				<DominoTile {tile} isVertical={isHandVertical} />
+				{#if showCardFaces}
+					<DominoTile {tile} isVertical={isHandVertical} />
+				{:else}
+					<div
+						class="flex overflow-hidden rounded-lg border border-stone-600 bg-stone-800
+						{isHandVertical ? 'h-28 w-14 flex-col' : 'h-14 w-28 flex-row'}"
+					>
+						<div class="flex h-full w-full items-center justify-center">
+							<div class="h-8 w-8 rounded-full border-2 border-stone-600/50 bg-stone-700/30"></div>
+						</div>
+					</div>
+				{/if}
 			</button>
 		{/each}
 	</div>

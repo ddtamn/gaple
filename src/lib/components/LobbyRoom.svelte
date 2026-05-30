@@ -2,58 +2,54 @@
 	import { getMultiplayer } from '$lib/multiplayer/room.svelte';
 
 	let {
+		viewType,
+		mode,
+		rounds = 3,
 		onBack,
 		onGameStart
 	}: {
+		viewType: 'create' | 'join';
+		mode: string;
+		rounds: number;
 		onBack: () => void;
 		onGameStart: () => void;
 	} = $props();
 
 	const mp = getMultiplayer();
 
+	const seatLabels = ['Bawah', 'Kanan', 'Atas', 'Kiri'];
+
 	let playerName = $state('');
 	let roomCode = $state('');
 	let joinCodeInput = $state('');
-	let activeTab = $state<'create' | 'join'>('create');
 	let roomCreated = $state(false);
 
 	// Determine the PartyKit host
-	// In Codespaces, the hostname is {codespace}-{PORT}.app.github.dev
-	// PartyKit runs on port 1999, so we need {codespace}-1999.app.github.dev
 	function resolvePartyKitHost(): string {
 		if (typeof window === 'undefined') return 'localhost:1999';
-
 		const hostname = window.location.hostname;
-
-		// GitHub Codespaces: hostname = {codespace}-{PORT}.app.github.dev
-		// PartyKit runs on port 1999: needs {codespace}-1999.app.github.dev
 		if (hostname.endsWith('.app.github.dev')) {
 			const base = hostname.replace(/-?\d+\.app\.github\.dev$/, '');
 			return `${base}-1999.app.github.dev`;
 		}
-
-		// Local development
-		if (hostname === 'localhost' || hostname === '127.0.0.1') {
-			return 'localhost:1999';
-		}
-
-		// Custom domain or other environment — try hostname with port
+		if (hostname === 'localhost' || hostname === '127.0.0.1') return 'localhost:1999';
 		return `${hostname}:1999`;
 	}
 
 	const host = $derived(resolvePartyKitHost());
 
-	const myPlayer = $derived(
-		mp.players.find((p) => p.id === mp.myPlayerId) ?? null
-	);
+	const isCreate = $derived(viewType === 'create');
 
-	const humanPlayers = $derived(
-		mp.players.filter((p) => !p.isBot && p.connected)
-	);
+	const modeLabel = $derived.by(() => {
+		if (mode === 'coop-vs-ai') return 'Coop vs AIs';
+		if (mode === 'coop-vs-coop') return 'Coop vs Coop';
+		return 'Multiplayer';
+	});
 
-	const botPlayers = $derived(
-		mp.players.filter((p) => p.isBot)
-	);
+	const myPlayer = $derived(mp.players.find((p) => p.id === mp.myPlayerId) ?? null);
+
+	const humanPlayers = $derived(mp.players.filter((p) => !p.isBot && p.connected));
+	const botPlayers = $derived(mp.players.filter((p) => p.isBot));
 
 	// Watch for game start from server
 	$effect(() => {
@@ -65,7 +61,7 @@
 	function createRoom() {
 		const name = playerName.trim() || 'Player';
 		const code = roomCode.trim() || generateRoomCode();
-		mp.connect(host, code, name);
+		mp.connect(host, code, name, mode, rounds);
 		roomCreated = true;
 	}
 
@@ -108,27 +104,9 @@
 			>
 				← Back
 			</button>
-			<h2 class="font-headline text-3xl font-semibold text-stone-100">Multiplayer</h2>
-		</div>
-
-		<!-- Tab Switch -->
-		<div class="flex w-full rounded-lg border border-stone-700 bg-surface p-1">
-			<button
-				class="flex-1 rounded-md px-4 py-2 font-body text-sm font-semibold transition {activeTab === 'create'
-					? 'bg-primary text-white'
-					: 'text-stone-400 hover:text-stone-100'}"
-				onclick={() => (activeTab = 'create')}
-			>
-				Buat Room
-			</button>
-			<button
-				class="flex-1 rounded-md px-4 py-2 font-body text-sm font-semibold transition {activeTab === 'join'
-					? 'bg-primary text-white'
-					: 'text-stone-400 hover:text-stone-100'}"
-				onclick={() => (activeTab = 'join')}
-			>
-				Gabung Room
-			</button>
+			<h2 class="font-headline text-3xl font-semibold text-stone-100">
+				{isCreate ? modeLabel : 'Join Room'}
+			</h2>
 		</div>
 
 		<div class="w-full space-y-4">
@@ -144,7 +122,7 @@
 				/>
 			</div>
 
-			{#if activeTab === 'create'}
+			{#if isCreate}
 				<div>
 					<label class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">
 						Room Code (optional)
@@ -156,6 +134,28 @@
 						maxlength={6}
 					/>
 				</div>
+
+				{#if mode === 'coop-vs-ai'}
+					<div class="rounded-lg border border-stone-700 bg-surface/50 p-4">
+						<p class="font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">Informasi Tim</p>
+						<div class="mt-2 space-y-1 font-body text-xs text-stone-400">
+							<p>• Kamu akan menjadi <span class="font-bold text-primary">Pemain Bawah</span> (index 0)</p>
+							<p>• Temanmu akan menjadi <span class="font-bold text-secondary">Pemain Atas</span> (index 2)</p>
+							<p>• Kartu antar anggota tim bisa saling lihat</p>
+							<p>• Room siap jika ada teman yang bergabung</p>
+						</div>
+					</div>
+				{:else if mode === 'coop-vs-coop'}
+					<div class="rounded-lg border border-stone-700 bg-surface/50 p-4">
+						<p class="font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">Informasi Room</p>
+						<div class="mt-2 space-y-1 font-body text-xs text-stone-400">
+							<p>• Membutuhkan <span class="font-bold text-secondary">4 pemain</span> untuk mulai</p>
+							<p>• Tim: [0,2] vs [1,3]</p>
+							<p>• Kartu antar anggota tim bisa saling lihat</p>
+						</div>
+					</div>
+				{/if}
+
 				<button
 					onclick={createRoom}
 					class="w-full rounded-lg bg-primary px-6 py-3.5 font-body text-base font-semibold text-white transition hover:bg-primary-hover active:scale-[0.98]"
@@ -188,7 +188,9 @@
 	<!-- Waiting Room -->
 	<div class="z-10 flex w-full max-w-lg flex-col items-center gap-6 px-4">
 		<div class="relative w-full text-center">
-			<h2 class="font-headline text-3xl font-semibold text-stone-100">Waiting Room</h2>
+			<h2 class="font-headline text-3xl font-semibold text-stone-100">
+				{mp.roomMode === 'coop-vs-ai' ? 'Coop vs AI' : mp.roomMode === 'coop-vs-coop' ? 'Coop vs Coop' : 'Room'} — Waiting
+			</h2>
 			<p class="mt-1 font-body text-sm text-stone-400">
 				Kode Room:
 				<button onclick={copyRoomCode} class="font-mono font-bold text-primary hover:text-primary-hover">
@@ -211,27 +213,51 @@
 				Pemain ({mp.players.filter((p) => p.connected).length}/4)
 			</p>
 
-			{#each humanPlayers as player, i (player.id)}
+			{#each mp.players as player, i (player.id)}
 				<div
-					class="flex items-center justify-between rounded-lg border border-stone-700 bg-surface px-4 py-3"
+					class="flex items-center justify-between rounded-lg border px-4 py-3 {player.isBot
+						? 'border-stone-700/50 bg-surface/50'
+						: 'border-stone-700 bg-surface'}"
 				>
 					<div class="flex items-center gap-3">
-						<span class="flex size-8 items-center justify-center rounded-full bg-stone-800 font-body text-sm font-bold text-stone-400">
+						<span
+							class="flex size-8 items-center justify-center rounded-full bg-stone-800 font-body text-sm font-bold {player.isBot
+								? 'text-stone-600'
+								: i === 0
+									? 'bg-primary/20 text-primary'
+									: 'text-stone-300'}"
+						>
 							{i + 1}
 						</span>
 						<div>
-							<span class="font-body text-sm font-semibold text-stone-100">
+							<span class="font-body text-sm font-semibold {player.isBot ? 'text-stone-500' : 'text-stone-100'}">
 								{player.name}
 							</span>
+							<span class="ml-1 font-body text-xs text-stone-600">({seatLabels[i]})</span>
+
 							{#if player.id === mp.hostId}
 								<span class="ml-2 rounded bg-secondary/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-secondary">
 									HOST
 								</span>
 							{/if}
+
+							{#if mp.isCoopMode && (i === 0 || i === 2)}
+								<span class="ml-1 rounded bg-emerald-500/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-emerald-400">
+									TIM A
+								</span>
+							{:else if mp.isCoopMode && (i === 1 || i === 3)}
+								<span class="ml-1 rounded bg-red-500/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-red-400">
+									TIM B
+								</span>
+							{/if}
 						</div>
 					</div>
 					<div class="flex items-center gap-2">
-						{#if player.ready}
+						{#if player.isBot}
+							<span class="rounded bg-stone-700/50 px-2 py-0.5 font-body text-xs font-medium text-stone-500">
+								AI
+							</span>
+						{:else if player.ready}
 							<span class="rounded bg-emerald-500/20 px-2 py-0.5 font-body text-xs font-medium text-emerald-400">
 								Siap
 							</span>
@@ -244,31 +270,17 @@
 				</div>
 			{/each}
 
-			{#each botPlayers as player, i (player.id)}
-				<div class="flex items-center justify-between rounded-lg border border-stone-700/50 bg-surface/50 px-4 py-3">
-					<div class="flex items-center gap-3">
-						<span class="flex size-8 items-center justify-center rounded-full bg-stone-800/50 font-body text-sm font-bold text-stone-500">
-							{humanPlayers.length + i + 1}
+			<!-- Empty slots (coop-vs-coop mode shows all empty slots) -->
+			{#if mp.roomMode === 'coop-vs-coop'}
+				{#each Array(Math.max(0, 4 - mp.players.length)) as _, i}
+					<div class="flex items-center gap-3 rounded-lg border border-dashed border-stone-700/50 bg-surface/30 px-4 py-3">
+						<span class="flex size-8 items-center justify-center rounded-full bg-stone-800/30 font-body text-sm font-bold text-stone-600">
+							{mp.players.length + i + 1}
 						</span>
-						<span class="font-body text-sm font-medium text-stone-500">
-							{player.name}
-						</span>
+						<span class="font-body text-sm italic text-stone-600">Menunggu pemain...</span>
 					</div>
-					<span class="rounded bg-stone-700/50 px-2 py-0.5 font-body text-xs font-medium text-stone-500">
-						AI
-					</span>
-				</div>
-			{/each}
-
-			<!-- Empty slots -->
-			{#each Array(Math.max(0, 4 - mp.players.length)) as _, i}
-				<div class="flex items-center gap-3 rounded-lg border border-dashed border-stone-700/50 bg-surface/30 px-4 py-3">
-					<span class="flex size-8 items-center justify-center rounded-full bg-stone-800/30 font-body text-sm font-bold text-stone-600">
-						{mp.players.length + i + 1}
-					</span>
-					<span class="font-body text-sm italic text-stone-600">Menunggu pemain...</span>
-				</div>
-			{/each}
+				{/each}
+			{/if}
 		</div>
 
 		<!-- Action Buttons -->
@@ -287,13 +299,19 @@
 			{#if mp.isHost}
 				<button
 					onclick={mp.startGame}
-					disabled={!mp.allReady && mp.players.length < 4}
+					disabled={!mp.allReady}
 					class="w-full rounded-lg bg-secondary px-6 py-3 font-body text-base font-semibold text-white transition hover:bg-secondary/80 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
 				>
 					Mulai Game
 				</button>
 				<p class="text-center font-body text-xs text-stone-500">
-					{mp.players.length < 4 ? 'Tunggu semua pemain bergabung...' : !mp.allReady ? 'Tunggu semua pemain siap...' : ''}
+					{mp.roomMode === 'coop-vs-coop' && mp.players.length < 4
+						? 'Tunggu semua pemain bergabung...'
+						: mp.roomMode === 'coop-vs-ai' && !mp.players[2]
+							? 'Tunggu teman bergabung...'
+							: !mp.allReady
+								? 'Tunggu semua pemain siap...'
+								: ''}
 				</p>
 			{/if}
 

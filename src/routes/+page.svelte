@@ -3,38 +3,37 @@
 	import LobbyRoom from '$lib/components/LobbyRoom.svelte';
 	import { getMultiplayer } from '$lib/multiplayer/room.svelte';
 
-	// Tipe data untuk Navigasi & Pengaturan Game
-	type ViewState = 'lobby' | 'setup-mode' | 'setup-rounds' | 'playing' | 'multiplayer-room' | 'multiplayer-game' | 'rules' | 'leaderboard';
-	type GameMode = 'vs-ai' | 'coop-vs-ai' | 'coop-vs-coop' | 'multiplayer' | null;
+	type ViewState = 'lobby' | 'setup-mode' | 'setup-rounds' | 'playing' | 'join-room' | 'multiplayer-room' | 'multiplayer-game' | 'rules' | 'leaderboard';
+	type GameMode = 'vs-ai' | 'coop-vs-ai' | 'coop-vs-coop' | null;
 	type Rounds = 3 | 5 | 7 | 'custom' | null;
 
 	let currentView = $state<ViewState>('lobby');
-
-	// State untuk menyimpan pilihan pemain di Wizard
 	let selectedMode = $state<GameMode>(null);
 	let selectedRounds = $state<Rounds>(null);
 
-	// Multiplayer singleton
 	const mp = getMultiplayer();
 
-	// Fungsi Navigasi
 	function goToSetup() {
 		currentView = 'setup-mode';
 	}
 
-	function goToMultiplayer() {
-		selectedMode = 'multiplayer';
-		currentView = 'multiplayer-room';
+	function goToJoinRoom() {
+		currentView = 'join-room';
 	}
 
 	function selectMode(mode: GameMode) {
 		selectedMode = mode;
-		currentView = 'setup-rounds';
+		if (mode === 'vs-ai') {
+			// VS AI: go to rounds selection, then local game
+			currentView = 'setup-rounds';
+		} else {
+			// Coop modes: go to lobby room (needs PartyKit)
+			currentView = 'multiplayer-room';
+		}
 	}
 
 	function selectRounds(rounds: Rounds) {
 		selectedRounds = rounds;
-		// Semua pengaturan selesai, mulai game!
 		currentView = 'playing';
 	}
 
@@ -70,10 +69,10 @@
 					New Game
 				</button>
 				<button
-					onclick={goToMultiplayer}
+					onclick={goToJoinRoom}
 					class="rounded bg-secondary px-8 py-3.5 font-body text-base font-semibold text-white transition hover:bg-secondary/80 active:scale-[0.98]"
 				>
-					🛜 Multiplayer
+					🔗 Join Room
 				</button>
 				<button
 					onclick={() => (currentView = 'leaderboard')}
@@ -111,7 +110,8 @@
 					<div class="text-4xl">🤖</div>
 					<h3 class="font-body text-lg font-semibold text-stone-100">VS AIs</h3>
 					<p class="text-center font-body text-xs text-stone-400">
-						1 Player melawan 3 AI secara individual.
+						1 Player melawan 3 AI secara individual.<br />
+						<span class="text-primary">Local — langsung mulai</span>
 					</p>
 				</button>
 				<button
@@ -121,7 +121,8 @@
 					<div class="text-4xl">🤝</div>
 					<h3 class="font-body text-lg font-semibold text-stone-100">Coop vs AIs</h3>
 					<p class="text-center font-body text-xs text-stone-400">
-						2 Player bergabung melawan 2 AI cerdas.
+						2 Player bergabung melawan 2 AI tim.<br />
+						<span class="text-secondary">Online — perlu room</span>
 					</p>
 				</button>
 				<button
@@ -130,7 +131,10 @@
 				>
 					<div class="text-4xl">🔥</div>
 					<h3 class="font-body text-lg font-semibold text-stone-100">Coop vs Coop</h3>
-					<p class="text-center font-body text-xs text-stone-400">4 Player bertarung dalam 2 tim.</p>
+					<p class="text-center font-body text-xs text-stone-400">
+						4 Player dalam 2 tim.<br />
+						<span class="text-secondary">Online — perlu room</span>
+					</p>
 					<div
 						class="absolute top-2 right-2 rounded bg-secondary px-2 py-0.5 font-body text-[10px] font-bold text-white"
 					>
@@ -166,18 +170,31 @@
 		</div>
 	{/if}
 
-	{#if currentView === 'multiplayer-room'}
+	{#if currentView === 'join-room'}
 		<LobbyRoom
+			viewType="join"
+			mode="coop-vs-ai"
+			rounds={3}
+			onBack={backToLobby}
+			onGameStart={() => (currentView = 'multiplayer-game')}
+		/>
+	{/if}
+
+	{#if currentView === 'multiplayer-room' && selectedMode !== null}
+		<LobbyRoom
+			viewType="create"
+			mode={selectedMode}
+			rounds={3}
 			onBack={backToLobby}
 			onGameStart={() => (currentView = 'multiplayer-game')}
 		/>
 	{/if}
 
 	{#if currentView === 'multiplayer-game'}
-		<GameArea mode="multiplayer" rounds={3} onExit={backToLobby} />
+		<GameArea mode={selectedMode ?? 'coop-vs-ai'} rounds={3} onExit={backToLobby} />
 	{/if}
 
-	{#if currentView === 'playing' && selectedMode !== null && selectedRounds !== null}
+	{#if currentView === 'playing' && selectedMode === 'vs-ai' && selectedRounds !== null}
 		<GameArea mode={selectedMode} rounds={selectedRounds} onExit={backToLobby} />
 	{/if}
 
@@ -187,12 +204,12 @@
 			<p class="mb-8 font-body text-stone-400">Fitur ini sedang dalam perancangan...</p>
 			<button
 				onclick={backToLobby}					class="rounded border-[1.5px] border-primary bg-transparent px-6 py-3 font-body text-sm font-semibold text-primary transition hover:bg-warm-hover"
-				>Kembali ke Lobi</button
+			>Kembali ke Lobi</button
 			>
 		</div>
 	{/if}
 
-	{#if currentView !== 'playing'}
+	{#if currentView !== 'playing' && currentView !== 'multiplayer-game'}
 		<div class="pointer-events-none absolute inset-0 z-0 opacity-20">
 			<div
 				class="absolute -top-[20%] -left-[10%] h-[50vw] w-[50vw] rounded-full bg-primary blur-[120px]"

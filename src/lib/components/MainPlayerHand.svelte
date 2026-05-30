@@ -11,6 +11,7 @@
 
 	let {
 		game,
+		currentGameState,
 		player,
 		isMyTurn,
 		isMain = false,
@@ -23,7 +24,7 @@
 		ontileclick
 	} = $props();
 
-	let boardTiles = $derived(game?.state?.board?.playedTiles ?? []);
+	let boardTiles = $derived(game?.state?.board?.playedTiles ?? currentGameState?.board?.playedTiles ?? []);
 	let sortedHand = $state<any[]>([]);
 
 	$effect(() => {
@@ -69,7 +70,14 @@
 	const emblaOptions = {
 		options: {
 			align: 'center' as const,
-			dragFree: true
+			dragFree: true,
+			// Prevent Embla from swallowing click events on tile buttons
+			watchDrag: (emblaApi: any, event: MouseEvent | TouchEvent) => {
+				const target = event.target as HTMLElement;
+				// Don't start drag when interacting with a tile button
+				if (target.closest('button')) return false;
+				return true;
+			}
 		},
 		plugins: []
 	};

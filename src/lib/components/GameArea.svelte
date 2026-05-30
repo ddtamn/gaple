@@ -411,7 +411,7 @@
 	{/if}
 
 	<!-- ── LAYER 3: 3 Opponent Players ────────────────────────── -->
-	<div class="shrink-0 border-b border-stone-800 px-2 py-2 md:px-4">
+	<div class="shrink-0 border-b border-stone-800 md:px-4 md:py-2">
 		{#if currentGameState}
 			{@const leftPlayer = p(3)}
 			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
@@ -419,7 +419,9 @@
 			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
 			{@const rightPlayer = p(1)}
 			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
-			<div class="flex items-start justify-around gap-2">
+			<!-- On mobile: scale opponents to ~40% to fit, on desktop: normal size -->
+			<div class="h-[90px] overflow-hidden md:h-auto">
+				<div class="flex origin-top items-start justify-center gap-2 scale-[0.40] md:scale-100">
 				<!-- Left Opponent (index 3) -->
 				{#if leftPlayer}
 					<div class="flex flex-col items-center gap-2">
@@ -504,14 +506,14 @@
 								showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
 							/>
 						</div>
-					</div>
-				{/if}
+					</div>			{/if}
 			</div>
-		{/if}
-	</div>
+		</div>
+	{/if}
+</div>
 
 	<!-- ── LAYER 4: Board Area (flex-1 = fills remaining space) ── -->
-	<div class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+	<div class="relative flex min-h-[140px] flex-1 items-center justify-center overflow-hidden md:min-h-0">
 		<div
 			class="flex h-full w-full items-center justify-center overflow-hidden"
 			bind:clientWidth={boardWidth}

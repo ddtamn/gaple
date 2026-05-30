@@ -90,7 +90,6 @@
 		return undefined;
 	}
 
-	let showResultDialog = $state(true);
 	let starterPlayerId = $state<string | null>(null);
 
 	// STATE UNTUK RONDE (from server for multiplayer, local for vs-ai)
@@ -108,7 +107,6 @@
 		if (isMultiplayer && mp) {
 			mp.nextRound();
 			currentRound++;
-			showResultDialog = true;
 			return;
 		}
 		if (!game) return;
@@ -117,8 +115,19 @@
 		game.startGame(previousWinnerId);
 		syncStarterMarker();
 		game.setBotPlayers(['1', '2', '3']);
-		showResultDialog = true;
 	}
+
+	// ── Team Scores (Coop Mode) ──────────────────────────────────────
+	const teamScores = $derived.by(() => {
+		if (!currentGameState || !isCoopMode) return null;
+		const scores: Record<string, number> = {};
+		for (const player of currentGameState.players) {
+			const key = player.teamId !== undefined ? `team-${player.teamId}` : 'team-0';
+			scores[key] = (scores[key] || 0) + (currentGameState.pointStandings[player.id] || 0);
+		}
+		return scores;
+	});
+	const teamScoreEntries = $derived.by(() => teamScores ? Object.entries(teamScores) : []);
 
 	// ── Interaction state ──────────────────────────────────────────────────────
 	let draggedTile = $state<Domino | null>(null);
@@ -284,6 +293,7 @@
 
 <svelte:window onmousemove={onWindowMouseMove} onmouseup={onWindowMouseUp} />
 
+<!-- Dragged tile follow-mouse overlay -->
 {#if isDragging && draggedTile}
 	<div
 		class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 scale-110 rotate-3 opacity-80"
@@ -293,17 +303,15 @@
 	</div>
 {/if}
 
+<!-- ══════════════════ MAIN FLEXBOX LAYOUT ══════════════════ -->
 <div
 	role="presentation"
-	class="relative flex h-dvh w-full items-center justify-center overflow-hidden bg-background text-stone-100 select-none"
+	class="flex h-dvh w-full flex-col overflow-hidden bg-background text-stone-100 select-none"
 	onclick={() => (selectedTile = null)}
 >
-	<div
-		class="absolute top-2 left-2 z-20 flex flex-col items-start gap-2 text-sm md:top-6 md:left-6"
-	>
-		<div
-			class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5"
-		>
+	<!-- ── LAYER 1: Game Info Bar ─────────────────────────────── -->
+	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-stone-800 px-3 py-2 md:px-6 md:py-3">
+		<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
 			<span class="font-body text-xs text-stone-500">Mode:</span>
 			<span class="font-body text-xs font-semibold text-stone-100 uppercase">{mode?.replace(/-/g, ' ')}</span>
 			<span class="text-stone-500">|</span>
@@ -313,63 +321,199 @@
 			>
 		</div>
 
-		{#if selectedTile && !currentGameState?.result}
-			<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-primary">
-				Kartu dipilih — klik ← / → untuk menempatkan
-			</p>
+		<!-- Coop team scores -->
+		{#if isCoopMode && teamScores}
+			<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
+				<span class="font-body text-xs text-stone-500">Score:</span>
+				{#each teamScoreEntries as [teamKey, score], i}
+					<span class="font-body text-xs font-bold {i === 0 ? 'text-emerald-400' : 'text-red-400'}">
+						{score}
+					</span>
+					{#if i < teamScoreEntries.length - 1}
+						<span class="text-stone-600">|</span>
+					{/if}
+				{/each}
+			</div>
 		{/if}
 
-		{#if isMultiplayer && !isMyTurn && !currentGameState?.result}
-			<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-amber-400">
-				Menunggu giliran pemain lain...
-			</p>
-		{/if}
+		<!-- Status messages -->
+		<div class="flex items-center gap-2">
+			{#if selectedTile && !currentGameState?.result}
+				<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-primary">
+					Kartu dipilih — klik ← / → untuk menempatkan
+				</p>
+			{/if}
+
+			{#if isMultiplayer && !isMyTurn && !currentGameState?.result}
+				<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-amber-400">
+					Menunggu giliran pemain lain...
+				</p>
+			{/if}
+		</div>
 	</div>
 
-	{#if currentGameState?.result && winner}
-		<div
-			class="pointer-events-none absolute top-36 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center md:top-40"
-		>
-			<h2
-				class="font-headline text-3xl font-bold tracking-wide md:text-5xl
-				{winner.id === (p(0)?.id ?? '') ? 'text-primary' : 'text-stone-200'}"
-			>
-				{#if winner.id === (p(0)?.id ?? '')}
-					🎉 Anda Menang Ronde Ini!
-				{:else}
-					{winner.name} Menang!
-				{/if}
-			</h2>				{#if currentGameState.result}
-					<p class="mt-2 font-body text-lg font-semibold text-stone-300 md:text-xl">
-						{currentGameState.result.winType}
-						<span class="text-primary">(+{currentGameState.result.points} Poin)</span>
+	<!-- ── LAYER 2: Round Result / Match Over (inline, no modal) ── -->
+	{#if currentGameState?.result}
+		<div class="shrink-0 border-b border-stone-800 px-4 py-3">
+			{#if isMatchOver}
+				<!-- Match completed -->
+				<div class="mx-auto max-w-lg text-center">
+					<p class="font-body text-xs font-bold tracking-[0.25em] text-primary uppercase">
+						Match Completed
 					</p>
-				{/if}
-		</div>
-	{/if}
-
-	{#if currentGameState?.result && !showResultDialog}
-		<div class="absolute top-2 right-2 z-20 flex gap-2 md:top-6 md:right-6">
-			<button
-				class="rounded border-[1.5px] border-primary bg-transparent px-4 py-2 font-body text-sm font-semibold text-primary transition hover:bg-warm-hover active:scale-[0.98]"
-				onclick={onExit}
-			>
-				Ke Lobi
-			</button>
-			{#if !isMatchOver && !isMultiplayer}
-				<button
-					class="rounded bg-primary px-4 py-2 font-body text-sm font-semibold text-white transition hover:bg-primary-hover active:bg-primary-active active:scale-[0.98]"
-					onclick={nextRound}
-				>
-					Lanjut Ronde
-				</button>
+					<h2 class="mt-1 font-headline text-2xl font-bold text-stone-100 md:text-3xl">
+						🏆 {finalStandings[0].name} Juara!
+					</h2>
+					<div class="mt-3 flex flex-col gap-1.5">
+						{#each finalStandings as rank, index (index)}
+							<div
+								class="flex items-center justify-between rounded-lg border border-stone-700 bg-warm-hover px-4 py-2"
+							>
+								<div class="flex items-center gap-3">
+									<span class="w-4 font-headline text-lg font-bold text-stone-400">{index + 1}</span>
+									<span
+										class="font-body font-semibold text-stone-100 {rank.name === 'Pemain Bawah'
+											? 'text-primary'
+											: ''}"
+									>
+										{rank.name}
+									</span>
+								</div>
+								<span class="font-headline text-lg font-bold text-primary"
+									>{rank.points} <span class="font-body text-xs font-normal text-primary/60">pts</span></span
+								>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{:else if winner}
+				<!-- Single round result -->
+				<div class="text-center">
+					<h2
+						class="font-headline text-2xl font-bold tracking-wide md:text-3xl
+						{winner.id === (p(0)?.id ?? '') ? 'text-primary' : 'text-stone-200'}"
+					>
+						{#if winner.id === (p(0)?.id ?? '')}
+							🎉 Anda Menang Ronde Ini!
+						{:else}
+							{winner.name} Menang!
+						{/if}
+					</h2>
+					{#if currentGameState.result}
+						<p class="mt-1 font-body text-base font-semibold text-stone-300 md:text-lg">
+							{currentGameState.result.winType}
+							<span class="text-primary">(+{currentGameState.result.points} Poin)</span>
+						</p>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}
 
-	<div class="absolute inset-0 z-0 flex items-center justify-center">
+	<!-- ── LAYER 3: 3 Opponent Players ────────────────────────── -->
+	<div class="shrink-0 border-b border-stone-800 px-2 py-2 md:px-4">
+		{#if currentGameState}
+			{@const leftPlayer = p(3)}
+			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
+			{@const topPlayer = p(2)}
+			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
+			{@const rightPlayer = p(1)}
+			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
+			<div class="flex items-start justify-around gap-2">
+				<!-- Left Opponent (index 3) -->
+				{#if leftPlayer}
+					<div class="flex flex-col items-center gap-2">
+						<BotAvatar
+							player={leftPlayer}
+							isMyTurn={currentGameState.turnIndex === leftTurnIndex}
+							isMarked={markerPlayerId === leftPlayer.id}
+							winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
+							showScore={!isCoopMode}
+						/>
+						<div class="pointer-events-auto">
+							<PlayerHand
+								player={leftPlayer}
+								isMyTurn={currentGameState.turnIndex === leftTurnIndex}
+								isMarked={markerPlayerId === leftPlayer.id}
+								winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
+								playableTileIds={new Set(
+									generateLegalMoves(currentGameState, leftPlayer.id).map((m) => m.tileId)
+								)}
+								activeTileId={activeTile?.id ?? null}
+								selectedTileId={selectedTile?.id ?? null}
+								ondragstart={handleSampleDisabled}
+								ontileclick={handleSampleDisabled}
+								showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
+							/>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Top Opponent (index 2) -->
+				{#if topPlayer}
+					<div class="flex flex-col items-center gap-2">
+						<BotAvatar
+							player={topPlayer}
+							isMyTurn={currentGameState.turnIndex === topTurnIndex}
+							isMarked={markerPlayerId === topPlayer.id}
+							winCount={currentGameState.pointStandings[topPlayer.id] || 0}
+							showScore={!isCoopMode}
+						/>
+						<div class="pointer-events-auto">
+							<PlayerHand
+								player={topPlayer}
+								isMyTurn={currentGameState.turnIndex === topTurnIndex}
+								isMarked={markerPlayerId === topPlayer.id}
+								winCount={currentGameState.pointStandings[topPlayer.id] || 0}
+								playableTileIds={new Set(
+									generateLegalMoves(currentGameState, topPlayer.id).map((m) => m.tileId)
+								)}
+								activeTileId={activeTile?.id ?? null}
+								selectedTileId={selectedTile?.id ?? null}
+								ondragstart={handleSampleDisabled}
+								ontileclick={handleSampleDisabled}
+								showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
+							/>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Right Opponent (index 1) -->
+				{#if rightPlayer}
+					<div class="flex flex-col items-center gap-2">
+						<BotAvatar
+							player={rightPlayer}
+							isMyTurn={currentGameState.turnIndex === rightTurnIndex}
+							isMarked={markerPlayerId === rightPlayer.id}
+							winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
+							showScore={!isCoopMode}
+						/>
+						<div class="pointer-events-auto">
+							<PlayerHand
+								player={rightPlayer}
+								isMyTurn={currentGameState.turnIndex === rightTurnIndex}
+								isMarked={markerPlayerId === rightPlayer.id}
+								winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
+								playableTileIds={new Set(
+									generateLegalMoves(currentGameState, rightPlayer.id).map((m) => m.tileId)
+								)}
+								activeTileId={activeTile?.id ?? null}
+								selectedTileId={selectedTile?.id ?? null}
+								ondragstart={handleSampleDisabled}
+								ontileclick={handleSampleDisabled}
+								showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
+							/>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<!-- ── LAYER 4: Board Area (flex-1 = fills remaining space) ── -->
+	<div class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
 		<div
-			class="relative flex h-full w-full items-center justify-center overflow-hidden bg-background"
+			class="flex h-full w-full items-center justify-center overflow-hidden"
 			bind:clientWidth={boardWidth}
 			bind:clientHeight={boardHeight}
 		>
@@ -423,122 +567,36 @@
 		</div>
 	</div>
 
-	<div
-		class="pointer-events-none absolute top-16 left-2 z-10 sm:top-20 sm:left-4 md:top-8 md:left-12"
-	>
-		<div
-			class="flex origin-top-left scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
-		>
-			{#if currentGameState}
-			{@const leftPlayer = p(3)}
-			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
-				{#if leftPlayer}
-				<BotAvatar
-					player={leftPlayer}
-					isMyTurn={currentGameState.turnIndex === leftTurnIndex}
-					isMarked={markerPlayerId === leftPlayer.id}
-					winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
-				/>
-				<div class="pointer-events-auto">
-					<PlayerHand
-						player={leftPlayer}
-						isMyTurn={currentGameState.turnIndex === leftTurnIndex}
-						isMarked={markerPlayerId === leftPlayer.id}
-						winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
-						playableTileIds={new Set(
-							generateLegalMoves(currentGameState, leftPlayer.id).map((m) => m.tileId)
-						)}
-						activeTileId={activeTile?.id ?? null}
-						selectedTileId={selectedTile?.id ?? null}
-						ondragstart={handleSampleDisabled}
-						ontileclick={handleSampleDisabled}
-						showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
-					/>
-				</div>
-			{/if}
-			{/if}
+	<!-- ── LAYER 5: Round Actions (between board and main hand) ── -->
+	{#if currentGameState?.result}
+		<div class="shrink-0 border-t border-stone-800 px-4 py-3">
+			<div class="flex justify-center gap-3">
+				<button
+					class="rounded border-[1.5px] border-primary bg-transparent px-5 py-2.5 font-body text-sm font-semibold text-primary transition hover:bg-warm-hover active:scale-[0.98]"
+					onclick={onExit}
+				>
+					Ke Lobi
+				</button>
+				{#if !isMatchOver}
+					<button
+						class="rounded bg-primary px-5 py-2.5 font-body text-sm font-semibold text-white transition hover:bg-primary-hover active:bg-primary-active active:scale-[0.98]"
+						onclick={nextRound}
+					>
+						Lanjut Ronde {mpCurrentRound + 1} ➔
+					</button>
+				{/if}
+			</div>
 		</div>
-	</div>
+	{/if}
 
-	<div class="pointer-events-none absolute top-8 left-1/2 z-10 -translate-x-1/2">
-		<div
-			class="flex origin-top scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
-		>
-			{#if currentGameState}
-			{@const topPlayer = p(2)}
-			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
-				{#if topPlayer}
-				<BotAvatar
-					player={topPlayer}
-					isMyTurn={currentGameState.turnIndex === topTurnIndex}
-					isMarked={markerPlayerId === topPlayer.id}
-					winCount={currentGameState.pointStandings[topPlayer.id] || 0}
-				/>
-				<div class="pointer-events-auto">
-					<PlayerHand
-						player={topPlayer}
-						isMyTurn={currentGameState.turnIndex === topTurnIndex}
-						isMarked={markerPlayerId === topPlayer.id}
-						winCount={currentGameState.pointStandings[topPlayer.id] || 0}
-						playableTileIds={new Set(
-							generateLegalMoves(currentGameState, topPlayer.id).map((m) => m.tileId)
-						)}
-						activeTileId={activeTile?.id ?? null}
-						selectedTileId={selectedTile?.id ?? null}
-						ondragstart={handleSampleDisabled}
-						ontileclick={handleSampleDisabled}
-						showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
-					/>
-				</div>
-			{/if}
-			{/if}
-		</div>
-	</div>
-
-	<div
-		class="pointer-events-none absolute top-16 right-2 z-10 sm:top-20 sm:right-4 md:top-8 md:right-12"
-	>
-		<div
-			class="flex origin-top-right scale-[0.40] flex-col items-center gap-2 transition-transform duration-300 md:scale-none"
-		>
-			{#if currentGameState}
-			{@const rightPlayer = p(1)}
-			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
-				{#if rightPlayer}
-				<BotAvatar
-					player={rightPlayer}
-					isMyTurn={currentGameState.turnIndex === rightTurnIndex}
-					isMarked={markerPlayerId === rightPlayer.id}
-					winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
-				/>
-				<div class="pointer-events-auto">
-					<PlayerHand
-						player={rightPlayer}
-						isMyTurn={currentGameState.turnIndex === rightTurnIndex}
-						isMarked={markerPlayerId === rightPlayer.id}
-						winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
-						playableTileIds={new Set(
-							generateLegalMoves(currentGameState, rightPlayer.id).map((m) => m.tileId)
-						)}
-						activeTileId={activeTile?.id ?? null}
-						selectedTileId={selectedTile?.id ?? null}
-						ondragstart={handleSampleDisabled}
-						ontileclick={handleSampleDisabled}
-						showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
-					/>
-				</div>
-			{/if}
-			{/if}
-		</div>
-	</div>
-
+	<!-- ── LAYER 6: Main Player Hand ──────────────────────────── -->
 	<div
 		bind:clientHeight={mainHandHeight}
-		class="absolute bottom-2 left-1/2 z-10 w-full -translate-x-1/2  md:w-fit"
+		class="shrink-0 border-t border-stone-800 pb-2 pt-1 md:pb-4"
 	>
 		{#if currentGameState}
 			{@const mainPlayer = p(0)}
-				{#if mainPlayer}
+			{#if mainPlayer}
 				<MainPlayerHand
 					player={mainPlayer}
 					isMyTurn={currentGameState.turnIndex === myPlayerIndex}
@@ -555,95 +613,7 @@
 					{game}
 					{currentGameState}
 				/>
-
 			{/if}
 		{/if}
 	</div>
 </div>
-
-{#if currentGameState?.result && winner && showResultDialog}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm">
-		<div
-			class="w-full max-w-md rounded-lg border border-stone-700 bg-surface p-8"
-		>
-			{#if isMatchOver}
-				<p class="text-center font-body text-xs font-bold tracking-[0.25em] text-primary uppercase">
-					Match Completed
-				</p>
-				<h2 class="mt-2 text-center font-headline text-3xl font-bold text-stone-100">
-					🏆 {finalStandings[0].name} Juara!
-				</h2>
-
-				<div class="mt-6 flex flex-col gap-2">
-					<p class="mb-1 font-body text-xs font-semibold tracking-widest text-stone-500 uppercase">
-						Klasemen Akhir
-					</p>
-					{#each finalStandings as rank, index (index)}
-						<div
-							class="flex items-center justify-between rounded-lg border border-stone-700 bg-warm-hover px-4 py-3"
-						>
-							<div class="flex items-center gap-3">
-								<span class="w-4 font-headline text-lg font-bold text-stone-400">{index + 1}</span>
-								<span
-									class="font-body font-semibold text-stone-100 {rank.name === 'Pemain Bawah'
-										? 'text-primary'
-										: ''}">{rank.name}</span
-								>
-							</div>
-							<span class="font-headline text-lg font-bold text-primary"
-								>{rank.points} <span class="font-body text-xs font-normal text-primary/60">pts</span></span
-							>
-						</div>
-					{/each}
-				</div>
-
-				<div class="mt-8 flex justify-center">
-					<button
-						class="w-full rounded bg-primary px-6 py-4 font-body text-base font-semibold text-white transition hover:bg-primary-hover active:bg-primary-active active:scale-[0.98]"
-						onclick={onExit}
-					>
-						KEMBALI KE LOBI
-					</button>
-				</div>
-			{:else}
-				<div class="mb-4 flex items-center justify-between border-b border-stone-700 pb-4">
-					<p class="font-body text-xs font-bold tracking-[0.2em] text-stone-500 uppercase">
-						Ronde {currentRound} Berakhir
-					</p>
-					<button
-						class="text-stone-500 transition hover:text-stone-100 hover:bg-stone-800"
-						onclick={() => (showResultDialog = false)}>✕</button
-					>
-				</div>
-
-				<div class="my-8 text-center">
-					<h2 class="mb-2 font-headline text-3xl font-bold text-stone-100">{winner.name} Menang!</h2>
-					<div class="inline-block rounded-lg border border-primary/20 bg-warm-hover px-6 py-3">
-						<p class="mb-1 font-body text-xs font-semibold tracking-wide text-primary uppercase">
-							Mendapatkan
-						</p>
-					<p class="font-headline text-4xl font-bold text-primary">
-						+{currentGameState.result.points} <span class="font-body text-lg">Poin</span>
-					</p>
-					</div>
-					{#if currentGameState.result}
-						<p
-							class="mt-4 inline-block rounded-lg border border-stone-700 bg-surface px-4 py-2 font-body text-sm font-medium text-stone-300"
-						>
-							Tipe Kemenangan: <span class="font-bold text-stone-100">{currentGameState.result.winType}</span>
-						</p>
-					{/if}
-				</div>
-
-				<div class="mt-6 flex justify-end gap-3">
-					<button
-						class="w-full rounded bg-primary px-6 py-3 font-body text-sm font-semibold text-white transition hover:bg-primary-hover active:bg-primary-active active:scale-[0.98]"
-						onclick={nextRound}
-					>
-						LANJUT RONDE {currentRound + 1} ➔
-					</button>
-				</div>
-			{/if}
-		</div>
-	</div>
-{/if}

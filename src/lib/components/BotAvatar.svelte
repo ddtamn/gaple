@@ -4,9 +4,10 @@
 		isMyTurn: boolean;
 		isMarked: boolean;
 		winCount: number;
+		showScore?: boolean;
 	}
 
-	let { player, isMyTurn, isMarked, winCount }: Props = $props();
+	let { player, isMyTurn, isMarked, winCount, showScore = true }: Props = $props();
 </script>
 
 <div
@@ -30,9 +31,11 @@
 		>
 		{/if}
 	</div>
-	<span
-		class="mt-2 w-full rounded bg-warm-hover py-0.5 text-center font-body text-[12px] font-semibold text-primary"
-	>
-		{winCount}
-	</span>
+	{#if showScore}
+		<span
+			class="mt-2 w-full rounded bg-warm-hover py-0.5 text-center font-body text-[12px] font-semibold text-primary"
+		>
+			{winCount}
+		</span>
+	{/if}
 </div>

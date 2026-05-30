@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Domino } from '../../engine/types';
 	import DominoTile from './DominoTile.svelte';
+	import type { TileSize } from './DominoTile.svelte';
 
 	interface Props {
 		player: { id: string; name: string; hand: Domino[] };
@@ -12,6 +13,7 @@
 		activeTileId: string | null;
 		selectedTileId: string | null;
 		showCardFaces?: boolean;
+		tileSize?: TileSize;
 		ondragstart: (tile: Domino, e: MouseEvent) => void;
 		ontileclick: (tile: Domino, e: MouseEvent) => void;
 	}
@@ -26,18 +28,23 @@
 		activeTileId,
 		selectedTileId,
 		showCardFaces = true,
+		tileSize = 'md',
 		ondragstart,
 		ontileclick
 	}: Props = $props();
 
 	const isHandVertical = true;
+
+	const hiddenTileSize = $derived(
+		tileSize === 'sm' ? 'h-20 w-12 flex-col' : 'h-28 w-14 flex-col'
+	);
 </script>
 
 <div class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.3]' : ''}">
 	<div
 		class="flex flex-row flex-wrap justify-center rounded-lg transition-all duration-150 md:flex-nowrap {isMain
 			? 'w-[90vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
-			: 'w-[270px] gap-1 p-2 md:w-max md:gap-2 md:p-3'}"
+			: 'w-max gap-1 p-2 md:gap-2 md:p-3'}"
 	>
 		{#each player.hand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
@@ -62,11 +69,10 @@
 				}}
 			>
 				{#if showCardFaces}
-					<DominoTile {tile} isVertical={isHandVertical} />
+					<DominoTile {tile} isVertical={isHandVertical} size={tileSize} />
 				{:else}
 					<div
-						class="flex overflow-hidden rounded-lg border border-stone-600 bg-stone-800
-						{isHandVertical ? 'h-28 w-14 flex-col' : 'h-14 w-28 flex-row'}"
+						class="flex overflow-hidden rounded-lg border border-stone-600 bg-stone-800 {hiddenTileSize}"
 					>
 						<div class="flex h-full w-full items-center justify-center">
 							<div class="h-8 w-8 rounded-full border-2 border-stone-600/50 bg-stone-700/30"></div>

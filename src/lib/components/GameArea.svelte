@@ -411,7 +411,7 @@
 	{/if}
 
 	<!-- ── LAYER 3: 3 Opponent Players ────────────────────────── -->
-	<div class="shrink-0 border-b border-stone-800 md:px-4 md:py-2">
+	<div class="shrink-0 border-b border-stone-800 px-2 py-2 md:px-4 md:py-3">
 		{#if currentGameState}
 			{@const leftPlayer = p(3)}
 			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
@@ -419,95 +419,100 @@
 			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
 			{@const rightPlayer = p(1)}
 			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
-			<!-- On mobile: scale opponents to ~40% to fit, on desktop: normal size -->
-			<div class="h-[90px] overflow-hidden md:h-auto">
-				<div class="flex origin-top items-start justify-center gap-2 scale-[0.40] md:scale-100">
-				<!-- Left Opponent (index 3) -->
-				{#if leftPlayer}
-					<div class="flex flex-col items-center gap-2">
-						<BotAvatar
+			<!-- Flex row: left / top / right opponents with natural sizing -->
+			<div class="flex items-start justify-center gap-2">
+			<!-- Left Opponent (index 3) - shifted down -->
+			{#if leftPlayer}
+				<div class="flex translate-y-6 flex-col items-center gap-1 md:translate-y-8 md:gap-2">
+					<BotAvatar
+						player={leftPlayer}
+						isMyTurn={currentGameState.turnIndex === leftTurnIndex}
+						isMarked={markerPlayerId === leftPlayer.id}
+						winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
+						showScore={!isCoopMode}
+						size="sm"
+					/>
+					<div class="pointer-events-auto">
+						<PlayerHand
 							player={leftPlayer}
 							isMyTurn={currentGameState.turnIndex === leftTurnIndex}
 							isMarked={markerPlayerId === leftPlayer.id}
 							winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
-							showScore={!isCoopMode}
+							playableTileIds={new Set(
+								generateLegalMoves(currentGameState, leftPlayer.id).map((m) => m.tileId)
+							)}
+							activeTileId={activeTile?.id ?? null}
+							selectedTileId={selectedTile?.id ?? null}
+							ondragstart={handleSampleDisabled}
+							ontileclick={handleSampleDisabled}
+							showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
+							tileSize="sm"
 						/>
-						<div class="pointer-events-auto">
-							<PlayerHand
-								player={leftPlayer}
-								isMyTurn={currentGameState.turnIndex === leftTurnIndex}
-								isMarked={markerPlayerId === leftPlayer.id}
-								winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
-								playableTileIds={new Set(
-									generateLegalMoves(currentGameState, leftPlayer.id).map((m) => m.tileId)
-								)}
-								activeTileId={activeTile?.id ?? null}
-								selectedTileId={selectedTile?.id ?? null}
-								ondragstart={handleSampleDisabled}
-								ontileclick={handleSampleDisabled}
-								showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
-							/>
-						</div>
 					</div>
-				{/if}
+				</div>
+			{/if}
 
-				<!-- Top Opponent (index 2) -->
-				{#if topPlayer}
-					<div class="flex flex-col items-center gap-2">
-						<BotAvatar
+			<!-- Top Opponent (index 2) - normal position -->
+			{#if topPlayer}
+				<div class="flex flex-col items-center gap-1 md:gap-2">
+					<BotAvatar
+						player={topPlayer}
+						isMyTurn={currentGameState.turnIndex === topTurnIndex}
+						isMarked={markerPlayerId === topPlayer.id}
+						winCount={currentGameState.pointStandings[topPlayer.id] || 0}
+						showScore={!isCoopMode}
+						size="sm"
+					/>
+					<div class="pointer-events-auto">
+						<PlayerHand
 							player={topPlayer}
 							isMyTurn={currentGameState.turnIndex === topTurnIndex}
 							isMarked={markerPlayerId === topPlayer.id}
 							winCount={currentGameState.pointStandings[topPlayer.id] || 0}
-							showScore={!isCoopMode}
+							playableTileIds={new Set(
+								generateLegalMoves(currentGameState, topPlayer.id).map((m) => m.tileId)
+							)}
+							activeTileId={activeTile?.id ?? null}
+							selectedTileId={selectedTile?.id ?? null}
+							ondragstart={handleSampleDisabled}
+							ontileclick={handleSampleDisabled}
+							showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
+							tileSize="sm"
 						/>
-						<div class="pointer-events-auto">
-							<PlayerHand
-								player={topPlayer}
-								isMyTurn={currentGameState.turnIndex === topTurnIndex}
-								isMarked={markerPlayerId === topPlayer.id}
-								winCount={currentGameState.pointStandings[topPlayer.id] || 0}
-								playableTileIds={new Set(
-									generateLegalMoves(currentGameState, topPlayer.id).map((m) => m.tileId)
-								)}
-								activeTileId={activeTile?.id ?? null}
-								selectedTileId={selectedTile?.id ?? null}
-								ondragstart={handleSampleDisabled}
-								ontileclick={handleSampleDisabled}
-								showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
-							/>
-						</div>
 					</div>
-				{/if}
+				</div>
+			{/if}
 
-				<!-- Right Opponent (index 1) -->
-				{#if rightPlayer}
-					<div class="flex flex-col items-center gap-2">
-						<BotAvatar
+			<!-- Right Opponent (index 1) - shifted down -->
+			{#if rightPlayer}
+				<div class="flex translate-y-6 flex-col items-center gap-1 md:translate-y-8 md:gap-2">
+					<BotAvatar
+						player={rightPlayer}
+						isMyTurn={currentGameState.turnIndex === rightTurnIndex}
+						isMarked={markerPlayerId === rightPlayer.id}
+						winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
+						showScore={!isCoopMode}
+						size="sm"
+					/>
+					<div class="pointer-events-auto">
+						<PlayerHand
 							player={rightPlayer}
 							isMyTurn={currentGameState.turnIndex === rightTurnIndex}
 							isMarked={markerPlayerId === rightPlayer.id}
 							winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
-							showScore={!isCoopMode}
+							playableTileIds={new Set(
+								generateLegalMoves(currentGameState, rightPlayer.id).map((m) => m.tileId)
+							)}
+							activeTileId={activeTile?.id ?? null}
+							selectedTileId={selectedTile?.id ?? null}
+							ondragstart={handleSampleDisabled}
+							ontileclick={handleSampleDisabled}
+							showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
+							tileSize="sm"
 						/>
-						<div class="pointer-events-auto">
-							<PlayerHand
-								player={rightPlayer}
-								isMyTurn={currentGameState.turnIndex === rightTurnIndex}
-								isMarked={markerPlayerId === rightPlayer.id}
-								winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
-								playableTileIds={new Set(
-									generateLegalMoves(currentGameState, rightPlayer.id).map((m) => m.tileId)
-								)}
-								activeTileId={activeTile?.id ?? null}
-								selectedTileId={selectedTile?.id ?? null}
-								ondragstart={handleSampleDisabled}
-								ontileclick={handleSampleDisabled}
-								showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
-							/>
-						</div>
-					</div>			{/if}
-			</div>
+					</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>

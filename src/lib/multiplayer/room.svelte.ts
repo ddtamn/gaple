@@ -22,6 +22,7 @@ let lastError = $state('');
 let chatMessages = $state<{ playerId: string; message: string }[]>([]);
 let roomMode = $state<'ffa' | 'coop-vs-ai' | 'coop-vs-coop'>('ffa');
 let roomRounds = $state(3);
+let multiplayerCurrentRound = $state(1);
 
 // Derived: is this a coop mode?
 let isCoopMode = $derived(roomMode === 'coop-vs-ai' || roomMode === 'coop-vs-coop');
@@ -54,7 +55,7 @@ let teammateName = $derived.by(() => {
 
 // ── Actions ───────────────────────────────────────────────────────────
 
-function connect(host: string, roomIdInput: string, name: string, mode?: string, rounds?: number) {
+function connect(host: string, roomIdInput: string, name: string, mode?: string, rounds?: number | string) {
 	if (partySocket) disconnect();
 
 	connectionState = 'connecting';
@@ -112,6 +113,7 @@ function disconnect() {
 	lastError = '';
 	roomMode = 'ffa';
 	roomRounds = 3;
+	multiplayerCurrentRound = 1;
 }
 
 function send(msg: ClientMessage) {
@@ -127,6 +129,10 @@ function toggleReady() {
 
 function startGame() {
 	send({ type: 'START_GAME' });
+}
+
+function nextRound() {
+	send({ type: 'NEXT_ROUND' });
 }
 
 function playTile(tileId: string, side: 'left' | 'right') {
@@ -183,6 +189,8 @@ function handleServerMessage(msg: ServerMessage) {
 		}
 		case 'GAME_START': {
 			gameState = msg.state;
+			// Store currentRound from server
+			if ('currentRound' in msg) multiplayerCurrentRound = (msg as any).currentRound;
 			// Find my player index by matching name
 			const myIdx = msg.state.players.findIndex((p: any) => p.name === myName);
 			if (myIdx >= 0) myPlayerIndex = myIdx;
@@ -251,6 +259,9 @@ export function useMultiplayer() {
 		get roomRounds() {
 			return roomRounds;
 		},
+		get currentRound() {
+			return multiplayerCurrentRound;
+		},
 		get isCoopMode() {
 			return isCoopMode;
 		},
@@ -275,6 +286,7 @@ export function useMultiplayer() {
 		disconnect,
 		toggleReady,
 		startGame,
+		nextRound,
 		playTile,
 		pass,
 		sendChat

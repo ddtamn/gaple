@@ -11,7 +11,7 @@ type ServerMessage =
 	| { type: 'PLAYER_LEFT'; playerId: string }
 	| { type: 'PLAYER_READY'; playerId: string }
 	| { type: 'ALL_READY' }
-	| { type: 'GAME_START'; seed: string; state: GameState }
+	| { type: 'GAME_START'; seed: string; state: GameState; currentRound: number }
 	| { type: 'MOVE_ACCEPTED'; state: GameState }
 	| { type: 'GAME_OVER'; state: GameState }
 	| { type: 'ERROR'; message: string }
@@ -25,7 +25,8 @@ type ClientMessage =
 	| { type: 'START_GAME' }
 	| { type: 'PLAY_TILE'; tileId: string; side: 'left' | 'right' }
 	| { type: 'PASS' }
-	| { type: 'CHAT'; message: string };
+	| { type: 'CHAT'; message: string }
+	| { type: 'NEXT_ROUND' };
 
 interface PlayerInfo {
 	id: string;
@@ -50,7 +51,7 @@ export default class GapleRoom implements Server {
 	private game: GameManager | null = null;
 	private gameMode: 'ffa' | 'coop-vs-ai' | 'coop-vs-coop' = 'ffa';
 	private gameRounds = 3;
-	private botCount = 2;
+	private currentRound = 0;
 	private botTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 	constructor(readonly room: import('partykit/server').Room) {}
@@ -163,6 +164,9 @@ export default class GapleRoom implements Server {
 			case 'PASS':
 				this.handlePass(sender, senderState);
 				break;
+			case 'NEXT_ROUND':
+				this.handleNextRound(sender);
+				break;
 			case 'CHAT':
 				this.broadcast({
 					type: 'CHAT',
@@ -233,13 +237,15 @@ export default class GapleRoom implements Server {
 		const playerNames = this.players.map((p) => p.name);
 		this.game = new GameManager(playerNames, seed, teamConfig);
 		this.game.startGame();
+		this.currentRound = 1;
 
 		// Broadcast initial state
-		this.broadcast({
-			type: 'GAME_START',
-			seed,
-			state: this.game.state
-		});
+			this.broadcast({
+				type: 'GAME_START',
+				seed,
+				state: this.game.state,
+				currentRound: this.currentRound
+			});
 
 		// Run bot turns if applicable (coop-vs-ai: AIs are at seats 1 and 3)
 		if (this.gameMode === 'coop-vs-ai' || this.gameMode === 'ffa') {
@@ -388,6 +394,50 @@ export default class GapleRoom implements Server {
 			this.broadcast({ type: 'GAME_OVER', state: this.game.state });
 		} else {
 			this.broadcast({ type: 'MOVE_ACCEPTED', state: this.game.state });
+			this.handleNextTurn();
+		}
+	}
+
+	// ── Next Round ───────────────────────────────────────────────────
+
+	private handleNextRound(sender: Connection) {
+		const senderState = sender.state as { seatIndex?: number } | null;
+		if (senderState?.seatIndex !== 0) {
+			this.sendTo(sender, { type: 'ERROR', message: 'Only the host can start the next round' });
+			return;
+		}
+
+		if (!this.game) {
+			this.sendTo(sender, { type: 'ERROR', message: 'No game in progress' });
+			return;
+		}
+
+		// Clear bot timeouts
+		for (const [, timeout] of this.botTimeouts) {
+			clearTimeout(timeout);
+		}
+		this.botTimeouts.clear();
+
+		const previousWinnerId = this.game.state.result?.winnerId;
+		const playerNames = this.players.map((p) => p.name);
+		const teamConfig: TeamConfig | undefined =
+			this.gameMode === 'coop-vs-ai' || this.gameMode === 'coop-vs-coop'
+				? { mode: 'teams' as const, layout: SEATS_TEAMS }
+				: undefined;
+
+		this.game = new GameManager(playerNames, undefined, teamConfig);
+		this.currentRound++;
+		this.game.startGame(previousWinnerId);
+
+		this.broadcast({
+			type: 'GAME_START',
+			seed: this.game.state.seed,
+			state: this.game.state,
+			currentRound: this.currentRound
+		});
+
+		// Run bot turns if applicable
+		if (this.gameMode === 'coop-vs-ai' || this.gameMode === 'ffa') {
 			this.handleNextTurn();
 		}
 	}

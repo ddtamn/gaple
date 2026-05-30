@@ -93,8 +93,10 @@
 	let showResultDialog = $state(true);
 	let starterPlayerId = $state<string | null>(null);
 
-	// STATE UNTUK RONDE
+	// STATE UNTUK RONDE (from server for multiplayer, local for vs-ai)
 	let currentRound = $state(1);
+	// In multiplayer, round counter comes from server
+	const mpCurrentRound = $derived(isMultiplayer ? (mp?.currentRound ?? 1) : currentRound);
 
 	function syncStarterMarker() {
 		if (!game || !game.state) return;
@@ -103,6 +105,12 @@
 
 	// FUNGSI LANJUT RONDE
 	function nextRound() {
+		if (isMultiplayer && mp) {
+			mp.nextRound();
+			currentRound++;
+			showResultDialog = true;
+			return;
+		}
 		if (!game) return;
 		const previousWinnerId = game.state.result?.winnerId;
 		currentRound++;
@@ -143,8 +151,9 @@
 	});
 
 	// Mengecek apakah pertandingan (seluruh ronde) sudah selesai
+	const effectiveRound = $derived(mpCurrentRound);
 	const isMatchOver = $derived(
-		currentGameState?.result && !isMultiplayer && rounds !== 'custom' && currentRound >= (rounds as number)
+		currentGameState?.result && rounds !== 'custom' && effectiveRound >= (rounds as number)
 	);
 
 	// Mengurutkan klasemen skor untuk akhir pertandingan
@@ -300,7 +309,7 @@
 			<span class="text-stone-500">|</span>
 			<span class="font-body text-xs text-stone-500">Ronde</span>
 			<span class="font-body text-xs font-bold text-primary"
-				>{currentRound} / {rounds === 'custom' ? '∞' : rounds}</span
+				>{mpCurrentRound} / {rounds === 'custom' ? '∞' : rounds}</span
 			>
 		</div>
 

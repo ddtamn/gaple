@@ -23,18 +23,19 @@
 
 	function selectMode(mode: GameMode) {
 		selectedMode = mode;
-		if (mode === 'vs-ai') {
-			// VS AI: go to rounds selection, then local game
-			currentView = 'setup-rounds';
-		} else {
-			// Coop modes: go to lobby room (needs PartyKit)
-			currentView = 'multiplayer-room';
-		}
+		// All modes go through round selection first
+		currentView = 'setup-rounds';
 	}
 
 	function selectRounds(rounds: Rounds) {
 		selectedRounds = rounds;
-		currentView = 'playing';
+		if (selectedMode === 'vs-ai') {
+			// VS AI: local game
+			currentView = 'playing';
+		} else {
+			// Coop modes: go to lobby room with rounds info
+			currentView = 'multiplayer-room';
+		}
 	}
 
 	function backToLobby() {
@@ -181,14 +182,14 @@
 		<LobbyRoom
 			viewType="create"
 			mode={selectedMode}
-			rounds={3}
+			rounds={selectedRounds ?? 3}
 			onBack={backToLobby}
 			onGameStart={() => (currentView = 'multiplayer-game')}
 		/>
 	{/if}
 
 	{#if currentView === 'multiplayer-game'}
-		<GameArea mode={selectedMode ?? 'coop-vs-ai'} rounds={3} onExit={backToLobby} />
+		<GameArea mode={selectedMode ?? 'coop-vs-ai'} rounds={selectedRounds ?? 3} onExit={backToLobby} />
 	{/if}
 
 	{#if currentView === 'playing' && selectedMode === 'vs-ai' && selectedRounds !== null}

@@ -10,7 +10,7 @@
 	}: {
 		viewType: 'create' | 'join';
 		mode: string;
-		rounds: number;
+		rounds: number | string;
 		onBack: () => void;
 		onGameStart: () => void;
 	} = $props();

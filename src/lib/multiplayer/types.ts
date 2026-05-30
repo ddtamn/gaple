@@ -42,6 +42,7 @@ export interface GameStartMessage {
 	type: 'GAME_START';
 	seed: string;
 	state: GameState;
+	currentRound: number;
 }
 
 export interface MoveAcceptedMessage {
@@ -111,6 +112,10 @@ export interface ClientChatMessage {
 	message: string;
 }
 
+export interface NextRoundMessage {
+	type: 'NEXT_ROUND';
+}
+
 export type ClientMessage =
 	| JoinMessage
 	| ReadyMessage
@@ -118,4 +123,5 @@ export type ClientMessage =
 	| StartGameMessage
 	| PlayTileMessage
 	| PassMessage
+	| NextRoundMessage
 	| ClientChatMessage;

@@ -6,3 +6,6 @@ export * from './moves';
 export * from './utils';
 export * from './game';
 export * from './boardLayout';
+export * from './scoring';
+export * from './teams';
+export * from './replay';

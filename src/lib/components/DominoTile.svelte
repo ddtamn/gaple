@@ -25,11 +25,11 @@
 		switch (size) {
 			case 'sm':
 				return {
-					container: vert ? 'h-20 w-12 flex-col' : 'h-12 w-20 flex-row',
-					dotCenter: 'h-2.5 w-2.5',
-					dotRegular: 'h-[5px] w-[5px]',
-					divider: vert ? 'h-full w-[60%]' : 'h-[60%] w-full',
-					gridPadding: 'p-1 gap-px'
+					container: vert ? 'h-[56px] w-[36px] flex-col' : 'h-[36px] w-[56px] flex-row',
+					dotCenter: 'h-2 w-2',
+					dotRegular: 'h-[4px] w-[4px]',
+					divider: vert ? 'h-full w-[55%]' : 'h-[55%] w-full',
+					gridPadding: 'p-[3px] gap-px'
 				};
 			case 'lg':
 				return {

@@ -36,15 +36,16 @@
 	const isHandVertical = true;
 
 	const hiddenTileSize = $derived(
-		tileSize === 'sm' ? 'h-20 w-12 flex-col' : 'h-28 w-14 flex-col'
+		tileSize === 'sm' ? 'h-[56px] w-[36px] flex-col' : 'h-28 w-14 flex-col'
 	);
+	const hiddenDotSize = $derived(tileSize === 'sm' ? 'h-5 w-5' : 'h-8 w-8');
 </script>
 
 <div class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.3]' : ''}">
 	<div
-		class="flex flex-row flex-wrap justify-center rounded-lg transition-all duration-150 md:flex-nowrap {isMain
-			? 'w-[90vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
-			: 'w-max gap-1 p-2 md:gap-2 md:p-3'}"
+		class="rounded-lg transition-all duration-150 {isMain
+			? 'flex flex-row flex-wrap justify-center w-[90vw] gap-1 sm:w-[280px] md:w-max md:flex-nowrap md:gap-2'
+			: 'grid w-max grid-cols-2 gap-0.5 p-1.5 md:flex md:flex-row md:flex-nowrap md:gap-2 md:p-3'}"
 	>
 		{#each player.hand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
@@ -75,7 +76,7 @@
 						class="flex overflow-hidden rounded-lg border border-stone-600 bg-stone-800 {hiddenTileSize}"
 					>
 						<div class="flex h-full w-full items-center justify-center">
-							<div class="h-8 w-8 rounded-full border-2 border-stone-600/50 bg-stone-700/30"></div>
+							<div class="{hiddenDotSize} rounded-full border-2 border-stone-600/50 bg-stone-700/30"></div>
 						</div>
 					</div>
 				{/if}

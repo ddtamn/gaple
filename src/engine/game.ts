@@ -1,5 +1,5 @@
 import type { Domino, GameResult, GameState, Move, Player } from './types';
-import { createBoard } from './board';
+import { createBoard, playTile } from './board';
 import { createDomino } from './domino';
 import { createPlayer, receiveTiles, removeTile } from './player';
 import {
@@ -16,7 +16,6 @@ import {
 	generateLegalMoves,
 	isValidMove
 } from './moves';
-import { playTile } from './board';
 
 function createDeck(): Domino[] {
 	const deck: Domino[] = [];
@@ -48,36 +47,20 @@ function getLowestScoreWinner(players: Player[]): Player {
 	})[0];
 }
 
-function createEmptyHandResult(players: Player[], winnerId: string): GameResult {
-	return {
-		winnerId,
-		reason: 'empty-hand',
-		scores: createScores(players)
-	};
-}
-
-function createBlockedResult(players: Player[]): GameResult {
-	const winner = getLowestScoreWinner(players);
-	return {
-		winnerId: winner.id,
-		reason: 'blocked',
-		scores: createScores(players)
-	};
-}
-
 function findStarterPlayer(players: Player[]): number {
 	const doubleThree = players.findIndex((player) =>
 		player.hand.some((tile) => tile.left === 3 && tile.right === 3)
 	);
-
 	return doubleThree >= 0 ? doubleThree : 0;
 }
 
+// PERBAIKAN 1: Tambahkan parameter `prevStandings` agar skor ronde lalu tidak hangus
 export function createGameState(
 	playerNames: string[],
 	seed: string,
 	startingPlayerId?: string,
-	requiresStarterTile = true
+	requiresStarterTile = true,
+	prevStandings: Record<string, number> = {}
 ): GameState {
 	const rng = createSeededRng(seed);
 	const deck = shuffle(createDeck(), rng);
@@ -102,7 +85,12 @@ export function createGameState(
 		events: [],
 		drawPile: remainingDeck,
 		seed,
-		result: null
+		result: null,
+		// PERBAIKAN 2: Inisialisasi memori untuk aturan Gaple Tradisional
+		pointStandings: prevStandings,
+		lastPlayedTile: null,
+		lastPlayerId: null,
+		lastMoveWasCekik: false
 	};
 }
 
@@ -122,47 +110,42 @@ export class GameManager {
 	get players() {
 		return this.state.players;
 	}
-
 	get board() {
 		return this.state.board;
 	}
-
 	get turnIndex() {
 		return this.state.turnIndex;
 	}
-
 	get history() {
 		return this.state.history;
 	}
-
 	get events() {
 		return this.state.events;
 	}
-
 	get currentPlayer() {
 		return this.players[this.state.turnIndex];
 	}
-
 	get result() {
 		return this.state.result;
 	}
 
 	startGame(previousWinnerId?: string) {
-		// Buat seed acak baru setiap kali game di-restart
+		// PERBAIKAN 3: Amankan rekam jejak poin sebelum reset ronde
+		const prevStandings = this.state?.pointStandings || {};
+
 		this.seed = Math.random().toString(36).substring(2, 10);
 		const requiresStarterTile = previousWinnerId === undefined;
 		this.state = createGameState(
 			this.players.map((player) => player.name),
 			this.seed,
 			previousWinnerId,
-			requiresStarterTile
+			requiresStarterTile,
+			prevStandings
 		);
 	}
 
 	nextTurn(playerId: string, tileId: string, side: Move['side']): boolean {
-		if (this.state.result) {
-			return false;
-		}
+		if (this.state.result) return false;
 
 		const move: Move = { playerId, tileId, side };
 		if (!isValidMove(this.state, move)) {
@@ -177,25 +160,53 @@ export class GameManager {
 
 	private applyMove(move: Move): boolean {
 		const currentPlayer = this.players[this.state.turnIndex];
+
+		// PERBAIKAN 4: Deteksi apakah langkah ini Cecek (bisa masuk di kedua ujung)
+		const legalMoves = generateLegalMoves(this.state, currentPlayer.id);
+		const isCecek = legalMoves.filter((m) => m.tileId === move.tileId).length === 2;
+
 		const result = removeTile(currentPlayer.hand, move.tileId);
 		const placedBoard = playTile(this.state.board, result.tile, move.side);
 
-		if (!placedBoard) {
-			return false;
-		}
+		if (!placedBoard) return false;
 
-		// PERBAIKAN 1: Buat array players baru tanpa memutasi yang lama
 		const newPlayers = this.state.players.map((p) =>
 			p.id === currentPlayer.id ? { ...p, hand: result.hand } : p
 		);
 
-		// Cek apakah game selesai (kartu habis)
 		const isFinished = result.hand.length === 0;
-		const gameResult = isFinished ? createEmptyHandResult(newPlayers, currentPlayer.id) : null;
+
+		// Clone pointStandings agar tidak mutasi state secara kotor
+		const newStandings = { ...this.state.pointStandings };
+		let gameResult: GameResult | null = null;
+
+		// PERBAIKAN 5: Kalkulasi Poin Menang Normal
+		if (isFinished) {
+			let pts = 1;
+			let type = 'Normal';
+
+			if (result.tile.left === result.tile.right) {
+				pts = 4;
+				type = 'Palang (Balak)';
+			} else if (isCecek) {
+				pts = 3;
+				type = 'Cium Kiri-Kanan (Cecek)';
+			}
+
+			newStandings[currentPlayer.id] = (newStandings[currentPlayer.id] || 0) + pts;
+
+			gameResult = {
+				winnerId: currentPlayer.id,
+				reason: 'empty-hand',
+				scores: createScores(newPlayers),
+				points: pts,
+				winType: type
+			};
+		}
 
 		this.state = {
 			...this.state,
-			players: newPlayers, // Masukkan players baru
+			players: newPlayers,
 			board: placedBoard,
 			history: [...this.state.history, move],
 			events: [
@@ -204,7 +215,10 @@ export class GameManager {
 				...(gameResult ? [createGameOverEvent(currentPlayer.id, gameResult.reason)] : [])
 			],
 			result: gameResult,
-			// PERBAIKAN 3: Jika game selesai, jangan pindah giliran agar tidak error (Infinity Loop)
+			pointStandings: newStandings,
+			lastPlayedTile: result.tile,
+			lastPlayerId: currentPlayer.id,
+			lastMoveWasCekik: isCecek,
 			turnIndex: isFinished
 				? this.state.turnIndex
 				: (this.state.turnIndex + 1) % this.players.length
@@ -218,21 +232,25 @@ export class GameManager {
 	}
 
 	passTurn(playerId: string): boolean {
-		if (this.state.result) {
+		if (
+			this.state.result ||
+			this.currentPlayer.id !== playerId ||
+			this.hasMoveAvailable(playerId)
+		) {
 			return false;
 		}
 
-		if (this.currentPlayer.id !== playerId) {
-			return false;
-		}
+		const newStandings = { ...this.state.pointStandings };
 
-		if (this.hasMoveAvailable(playerId)) {
-			return false;
+		// PERBAIKAN 6: Aturan Cekik (Tambahkan 1 poin ke pemain yang membuat Pass)
+		if (this.state.lastPlayerId) {
+			newStandings[this.state.lastPlayerId] = (newStandings[this.state.lastPlayerId] || 0) + 1;
 		}
 
 		const nextTurnIndex = (this.state.turnIndex + 1) % this.players.length;
 		const stateAfterPass: GameState = {
 			...this.state,
+			pointStandings: newStandings, // Simpan poin cekik
 			events: [...this.state.events, createPassEvent(playerId)],
 			turnIndex: nextTurnIndex
 		};
@@ -240,8 +258,30 @@ export class GameManager {
 		const isBlocked = stateAfterPass.players.every(
 			(player) => generateLegalMoves(stateAfterPass, player.id).length === 0
 		);
+
+		// PERBAIKAN 7: Kalkulasi Poin Buntu / Gaple
 		if (isBlocked) {
-			const gameResult = createBlockedResult(stateAfterPass.players);
+			const winner = getLowestScoreWinner(stateAfterPass.players);
+			let pts = 1;
+			let type = 'Buntu (Mutlak)';
+
+			// Aturan Tembak (Yang menang BUKAN yang menutup meja)
+			if (winner.id !== stateAfterPass.lastPlayerId) {
+				pts = 2;
+				type = 'Buntu (Kena Tembak)';
+			}
+
+			stateAfterPass.pointStandings[winner.id] =
+				(stateAfterPass.pointStandings[winner.id] || 0) + pts;
+
+			const gameResult: GameResult = {
+				winnerId: winner.id,
+				reason: 'blocked',
+				scores: createScores(stateAfterPass.players),
+				points: pts,
+				winType: type
+			};
+
 			this.state = {
 				...stateAfterPass,
 				result: gameResult,
@@ -261,11 +301,9 @@ export class GameManager {
 	cloneState() {
 		return cloneGameState(this.state);
 	}
-
 	serializeState() {
 		return serializeGameState(this.state);
 	}
-
 	loadState(serialized: string) {
 		this.state = loadGameState(serialized) as GameState;
 	}

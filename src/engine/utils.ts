@@ -71,3 +71,13 @@ export function getRemainingTilesCount(
 
 	return remainingCounts;
 }
+
+// Menghitung jumlah titik (pips) pada satu kartu
+export function getTilePips(tile: Domino): number {
+	return tile.left + tile.right;
+}
+
+// Menghitung total titik (pips) di tangan pemain
+export function getHandPips(hand: Domino[]): number {
+	return hand.reduce((sum, tile) => sum + getTilePips(tile), 0);
+}

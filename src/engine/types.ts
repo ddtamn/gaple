@@ -33,7 +33,9 @@ export type GameOverReason = 'empty-hand' | 'blocked';
 export interface GameResult {
 	winnerId: PlayerId;
 	reason: GameOverReason;
-	scores: Record<PlayerId, number>;
+	scores: Record<PlayerId, number>; // dead code
+	points?: number;
+	winType?: string; // Palang, Cekik, Normal, Tangkap, Mutlak
 }
 
 export type GameEventType = 'MOVE_PLAYED' | 'PLAYER_PASS' | 'GAME_OVER';
@@ -53,6 +55,10 @@ export interface GameState {
 	drawPile: Domino[];
 	seed: string;
 	result: GameResult | null;
+	lastPlayedTile?: Domino | null;
+	lastPlayerId?: string | null;
+	lastMoveWasCekik?: boolean;
+	pointStandings: Record<string, number>; // all round point
 }
 
 export interface TilePosition {

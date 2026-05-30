@@ -93,7 +93,7 @@
 	use:emblaCarouselSvelte={emblaOptions}
 	onemblaInit={onEmblaInit}
 >
-	<div class="embla__container flex gap-1">
+	<div class="embla__container flex justify-center gap-1">
 		{#each sortedHand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
 			{@const isPlayable = playableTileIds.has(tile.id)}

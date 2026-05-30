@@ -15,10 +15,16 @@ let roomId = $state('');
 let hostId = $state('');
 let gameState = $state<GameState | null>(null);
 let myPlayerId = $state('');
+let myPlayerIndex = $state(-1);
 let myName = $state('');
 let isReady = $state(false);
 let lastError = $state('');
 let chatMessages = $state<{ playerId: string; message: string }[]>([]);
+let roomMode = $state<'ffa' | 'coop-vs-ai' | 'coop-vs-coop'>('ffa');
+let roomRounds = $state(3);
+
+// Derived: is this a coop mode?
+let isCoopMode = $derived(roomMode === 'coop-vs-ai' || roomMode === 'coop-vs-coop');
 
 // Derived: am I the host?
 let isHost = $derived(hostId === myPlayerId && hostId !== '');
@@ -32,19 +38,38 @@ let allReady = $derived(
 	players.filter((p) => !p.isBot && p.connected).every((p) => p.ready)
 );
 
+// Derived: teammate player index (in coop mode)
+let teammateIndex = $derived.by(() => {
+	if (!isCoopMode || myPlayerIndex < 0) return -1;
+	if (myPlayerIndex === 0) return 2;
+	if (myPlayerIndex === 2) return 0;
+	return -1;
+});
+
+// Derived: teammate player name (for display)
+let teammateName = $derived.by(() => {
+	if (teammateIndex < 0) return '';
+	return players[teammateIndex]?.name || '';
+});
+
 // ── Actions ───────────────────────────────────────────────────────────
 
-function connect(host: string, roomIdInput: string, name: string) {
+function connect(host: string, roomIdInput: string, name: string, mode?: string, rounds?: number) {
 	if (partySocket) disconnect();
 
 	connectionState = 'connecting';
 	myName = name;
 	roomId = roomIdInput;
 
+	// Build query with optional mode/rounds for room creator
+	const query: Record<string, string> = { name };
+	if (mode) query.mode = mode;
+	if (rounds !== undefined) query.rounds = String(rounds);
+
 	partySocket = new PartySocket({
 		host,
 		room: roomIdInput,
-		query: { name }
+		query
 	});
 
 	partySocket.onopen = () => {
@@ -81,9 +106,12 @@ function disconnect() {
 	players = [];
 	gameState = null;
 	myPlayerId = '';
+	myPlayerIndex = -1;
 	isReady = false;
 	chatMessages = [];
 	lastError = '';
+	roomMode = 'ffa';
+	roomRounds = 3;
 }
 
 function send(msg: ClientMessage) {
@@ -119,8 +147,10 @@ function handleServerMessage(msg: ServerMessage) {
 		case 'ROOM_STATE': {
 			players = msg.players;
 			hostId = msg.hostId;
+			roomMode = msg.mode;
+			roomRounds = msg.rounds;
 
-			// Find my player ID
+			// Find my player ID (only before game starts)
 			const me = msg.players.find((p) => p.name === myName && p.connected);
 			if (me && !myPlayerId) {
 				myPlayerId = me.id;
@@ -153,6 +183,9 @@ function handleServerMessage(msg: ServerMessage) {
 		}
 		case 'GAME_START': {
 			gameState = msg.state;
+			// Find my player index by matching name
+			const myIdx = msg.state.players.findIndex((p: any) => p.name === myName);
+			if (myIdx >= 0) myPlayerIndex = myIdx;
 			break;
 		}
 		case 'MOVE_ACCEPTED': {
@@ -197,6 +230,9 @@ export function useMultiplayer() {
 		get myPlayerId() {
 			return myPlayerId;
 		},
+		get myPlayerIndex() {
+			return myPlayerIndex;
+		},
 		get myName() {
 			return myName;
 		},
@@ -208,6 +244,21 @@ export function useMultiplayer() {
 		},
 		get humanCount() {
 			return humanCount;
+		},
+		get roomMode() {
+			return roomMode;
+		},
+		get roomRounds() {
+			return roomRounds;
+		},
+		get isCoopMode() {
+			return isCoopMode;
+		},
+		get teammateIndex() {
+			return teammateIndex;
+		},
+		get teammateName() {
+			return teammateName;
 		},
 		get gameState() {
 			return gameState;

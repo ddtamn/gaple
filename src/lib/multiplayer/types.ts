@@ -15,7 +15,8 @@ export interface RoomStateMessage {
 	roomId: string;
 	players: PlayerInfo[];
 	hostId: string;
-	mode: string;
+	mode: 'ffa' | 'coop-vs-ai' | 'coop-vs-coop';
+	rounds: number;
 }
 
 export interface PlayerJoinedMessage {

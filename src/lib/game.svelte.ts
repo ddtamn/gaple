@@ -1,5 +1,5 @@
 import { GameManager as PureGameManager } from '../engine/game';
-import type { GameState, Move } from '../engine/types';
+import type { GameState, Move, TeamConfig } from '../engine/types';
 // import { selectAiMove } from '../engine/ai';
 import AiWorker from './ai.worker?worker';
 
@@ -10,14 +10,16 @@ export class SvelteGameManager {
 	private botThinking = false;
 	private winCounts: Record<string, number> = {};
 	private lastRecordedResult: GameState['result'] = null;
+	private teamConfig?: TeamConfig;
 
 	private aiWorker: Worker | null = null;
 
 	// Gunakan $state untuk membuat UI bereaksi saat variabel ini ditimpa (di-assign ulang)
 	public state = $state<GameState>() as GameState;
 
-	constructor(playerNames: string[], seed?: string) {
-		this.engine = new PureGameManager(playerNames, seed);
+	constructor(playerNames: string[], seed?: string, teamConfig?: TeamConfig) {
+		this.teamConfig = teamConfig;
+		this.engine = new PureGameManager(playerNames, seed, teamConfig);
 		this.state = this.engine.state;
 
 		if (typeof window !== 'undefined') {

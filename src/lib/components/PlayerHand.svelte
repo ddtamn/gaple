@@ -33,7 +33,7 @@
 
 <div class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.3]' : ''}">
 	<div
-		class="flex flex-row flex-wrap justify-center rounded-2xl transition-all duration-150 md:flex-nowrap {isMain
+		class="flex flex-row flex-wrap justify-center rounded-lg transition-all duration-150 md:flex-nowrap {isMain
 			? 'w-[90vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
 			: 'w-[270px] gap-1 p-2 md:w-max md:gap-2 md:p-3'}"
 	>
@@ -47,7 +47,7 @@
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
                 {isActive ? 'scale-90 opacity-30' : ''}
                 {isMyTurn && selectedTileId !== null && !isActive
-					? 'rounded-xl ring-2 ring-white/20'
+					? 'rounded-lg ring-2 ring-primary/20'
 					: ''}"
 				onmousedown={(e) => {
 					if (!isMyTurn || !isPlayable) return;

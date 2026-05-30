@@ -2,6 +2,25 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
+@theme {
+	--color-primary: #C2410C;
+	--color-primary-hover: #EA580C;
+	--color-primary-active: #F97316;
+	--color-secondary: #D4A373;
+	--color-tertiary: #4A7A1F;
+	--color-background: #1A1614;
+	--color-surface: #2A2520;
+	--color-success: #22C55E;
+	--color-warning: #F59E0B;
+	--color-error: #EF4444;
+	--color-info: #60A5FA;
+	--color-warm-hover: #352F28;
+
+	--font-headline: 'Lora', serif;
+	--font-body: 'Open Sans', sans-serif;
+	--font-mono: 'Source Code Pro', monospace;
+}
+
 body {
-	@apply bg-neutral-950;
+	@apply bg-background font-body text-stone-100 antialiased;
 }

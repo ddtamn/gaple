@@ -18,7 +18,7 @@
 </script>
 
 <div
-	class="flex overflow-hidden rounded-xl bg-neutral-300 shadow-md
+	class="flex overflow-hidden rounded-lg border border-stone-300 bg-white
       {isVertical ? 'h-28 w-14 flex-col' : 'h-14 w-28 flex-row'}"
 >
 	<div
@@ -28,14 +28,12 @@
 	>
 		{#each dotPatterns[tile.left] as hasDot, j (j)}
 			<div
-				class="rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'} 
+				class="rounded-full {hasDot ? 'bg-red-600' : 'bg-transparent'} 
 				{tile.left === 1 && hasDot ? 'h-3.5 w-3.5' : 'h-2 w-2'}"
 			></div>
 		{/each}
-	</div>
-
-	<div class="flex items-center justify-center {isVertical ? 'h-px w-full' : 'h-full w-px'}">
-		<div class="{isVertical ? 'h-full w-[70%]' : 'h-[70%] w-full'} bg-red-700/25"></div>
+	</div>	<div class="flex items-center justify-center {isVertical ? 'h-px w-full' : 'h-full w-px'}">
+		<div class="{isVertical ? 'h-full w-[70%]' : 'h-[70%] w-full'} bg-red-600/35"></div>x
 	</div>
 
 	<div
@@ -45,7 +43,7 @@
 	>
 		{#each dotPatterns[tile.right] as hasDot, j (j)}
 			<div
-				class="rounded-full {hasDot ? 'bg-red-700' : 'bg-transparent'} 
+				class="rounded-full {hasDot ? 'bg-red-600' : 'bg-transparent'} 
 				{tile.right === 1 && hasDot ? 'h-3.5 w-3.5' : 'h-2 w-2'}"
 			></div>
 		{/each}

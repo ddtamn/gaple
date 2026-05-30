@@ -1,7 +1,8 @@
-import type { GameState, Move } from '../types';
+import type { GameState, Move, TeamId } from '../types';
 import { GameManager, calculateHandScore } from '../game';
 import { generateLegalMoves } from '../moves';
 import { createTranspositionTable, hashGameState } from './cache';
+import { evaluateGameResult } from '../scoring';
 
 const ENDGAME_TILE_LIMIT = 8;
 const MAX_ENDGAME_DEPTH = 10;
@@ -12,21 +13,34 @@ function countRemainingTiles(state: GameState): number {
 	);
 }
 
-function scoreEndgameState(state: GameState, playerId: string): number {
+function scoreEndgameState(state: GameState, playerId: string, teamId?: TeamId): number {
 	if (state.result) {
-		const aiScore = state.result.scores[playerId] ?? 99;
-		const bestOpponentScore = Math.min(
-			...state.players
-				.filter((item) => item.id !== playerId)
-				.map((item) => state.result?.scores[item.id] ?? 99)
-		);
-		const margin = bestOpponentScore - aiScore;
-		return state.result.winnerId === playerId ? 10_000 + margin : -10_000 + margin;
+		// Use Gaple scoring: 1000x multiplier for scoring tier
+		const score = state.result.points ?? 1;
+		const base = 1000 + score * 100;
+
+		if (teamId !== undefined) {
+			// Team mode
+			const winnerPlayer = state.players.find((p) => p.id === state.result!.winnerId);
+			const winnerTeam = winnerPlayer?.teamId;
+			return winnerTeam === teamId ? base : -base;
+		}
+
+		return state.result.winnerId === playerId ? base : -base;
 	}
 
-	const aiScore = state.players.find((player) => player.id === playerId)?.hand
-		? calculateHandScore(state.players.find((player) => player.id === playerId)!)
-		: 99;
+	// Use pip-count based evaluation for non-terminal states
+	if (teamId !== undefined) {
+		const teamPips = state.players
+			.filter((p) => p.teamId === teamId)
+			.reduce((sum, p) => sum + calculateHandScore(p), 0);
+		const opponentPips = state.players
+			.filter((p) => p.teamId !== teamId)
+			.reduce((sum, p) => sum + calculateHandScore(p), 0);
+		return opponentPips - teamPips;
+	}
+
+	const aiScore = calculateHandScore(state.players.find((player) => player.id === playerId)!);
 	const bestOpponentScore = Math.min(
 		...state.players.filter((item) => item.id !== playerId).map((item) => calculateHandScore(item))
 	);
@@ -63,6 +77,7 @@ function minimax(
 	beta: number,
 	cache = createTranspositionTable()
 ): number {
+	const teamId = state.players.find((p) => p.id === playerId)?.teamId;
 	const memoKey = `${hashGameState(state)}:${depth}:${playerId}`;
 	const cached = cache.get(memoKey);
 	if (cached) {
@@ -70,7 +85,7 @@ function minimax(
 	}
 
 	if (state.result || depth >= MAX_ENDGAME_DEPTH) {
-		const value = scoreEndgameState(state, playerId);
+		const value = scoreEndgameState(state, playerId, teamId);
 		cache.set(memoKey, { value, visits: 1, updatedAt: Date.now() });
 		return value;
 	}
@@ -91,15 +106,17 @@ function minimax(
 	}
 
 	let value: number;
-	if (currentPlayer.id === playerId) {
+	const isMaximizing = teamId !== undefined
+		? currentPlayer.teamId === teamId // Team mode: maximize for team
+		: currentPlayer.id === playerId; // FFA mode: maximize for self
+
+	if (isMaximizing) {
 		value = Number.NEGATIVE_INFINITY;
 		for (const move of legalMoves) {
 			const nextState = applyMove(state, move);
 			value = Math.max(value, minimax(nextState, playerId, depth + 1, alpha, beta, cache));
 			alpha = Math.max(alpha, value);
-			if (beta <= alpha) {
-				break;
-			}
+			if (beta <= alpha) break;
 		}
 	} else {
 		value = Number.POSITIVE_INFINITY;
@@ -107,9 +124,7 @@ function minimax(
 			const nextState = applyMove(state, move);
 			value = Math.min(value, minimax(nextState, playerId, depth + 1, alpha, beta, cache));
 			beta = Math.min(beta, value);
-			if (beta <= alpha) {
-				break;
-			}
+			if (beta <= alpha) break;
 		}
 	}
 

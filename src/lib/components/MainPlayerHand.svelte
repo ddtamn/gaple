@@ -11,6 +11,7 @@
 
 	let {
 		game,
+		currentGameState,
 		player,
 		isMyTurn,
 		isMain = false,
@@ -23,7 +24,7 @@
 		ontileclick
 	} = $props();
 
-	let boardTiles = $derived(game.state.board.playedTiles);
+	let boardTiles = $derived(game?.state?.board?.playedTiles ?? currentGameState?.board?.playedTiles ?? []);
 	let sortedHand = $state<any[]>([]);
 
 	$effect(() => {
@@ -67,8 +68,18 @@
 	);
 
 	const emblaOptions = {
-		align: 'center',
-		dragFree: true
+		options: {
+			align: 'center' as const,
+			dragFree: true,
+			// Prevent Embla from swallowing click events on tile buttons
+			watchDrag: (emblaApi: any, event: MouseEvent | TouchEvent) => {
+				const target = event.target as HTMLElement;
+				// Don't start drag when interacting with a tile button
+				if (target.closest('button')) return false;
+				return true;
+			}
+		},
+		plugins: []
 	};
 
 	let emblaApi = $state<any>(null);
@@ -89,7 +100,7 @@
 </script>
 
 <div
-	class="embla mb-2 w-full overflow-hidden px-2 py-2 md:max-w-2xl"
+	class="embla mb-2 w-full rounded-lg md:max-w-2xl"
 	use:emblaCarouselSvelte={emblaOptions}
 	onemblaInit={onEmblaInit}
 >
@@ -120,8 +131,10 @@
 	</div>
 </div>
 
+<div class="px-8">
+
 <div
-	class="flex w-full items-center justify-between gap-2 rounded-md bg-black/25 p-1 px-4 text-slate-50/35"
+	class="flex w-full items-center justify-between gap-2 rounded border border-stone-700 bg-surface p-1 px-4 text-stone-400"
 >
 	<div class="flex items-center justify-center gap-2">
 		{#each remainings as item (item.value)}
@@ -134,16 +147,17 @@
 	<div class="flex items-center gap-2 text-xs">
 		{#if isMarked}
 			<span
-				class="flex size-5 items-center justify-center rounded-md bg-amber-400 text-xs font-black text-amber-950 shadow-md"
+				class="flex size-5 items-center justify-center rounded bg-secondary font-body text-xs font-bold text-white"
 				>D</span
 			>
 		{/if}
 		<span
-			class="flex size-5 min-w-[24px] items-center justify-center rounded-md bg-black/75 px-2 text-xs font-black text-yellow-400 ring-1 ring-yellow-400/40"
+			class="flex size-5 min-w-[24px] items-center justify-center rounded border border-primary/30 bg-warm-hover px-2 font-body text-xs font-bold text-primary"
 		>
 			{winCount}
 		</span>
 	</div>
+</div>
 </div>
 
 <style>

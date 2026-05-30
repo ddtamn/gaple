@@ -1,4 +1,4 @@
-import type { GameState, Move } from '../types';
+import type { GameState, Move, TeamId } from '../types';
 import { GameManager } from '../game';
 import { generateLegalMoves } from '../moves';
 import { createSeededRng } from '../utils';
@@ -9,6 +9,7 @@ import {
 	getStateAfterMove,
 	countMatchingNumbers
 } from './heuristics';
+import { evaluateGameResult } from '../scoring';
 
 const DEFAULT_MAX_PLAYOUT_TURNS = 120;
 
@@ -60,7 +61,8 @@ export function playout(
 	simulatedState: GameState,
 	aiPlayerId: string,
 	rng = createSeededRng('gaple-ai'),
-	maxPlayoutTurns = DEFAULT_MAX_PLAYOUT_TURNS
+	maxPlayoutTurns = DEFAULT_MAX_PLAYOUT_TURNS,
+	teamId?: TeamId
 ): number {
 	const simManager = new GameManager(simulatedState.players.map((player) => player.name));
 	simManager.state = simulatedState;
@@ -81,7 +83,8 @@ export function playout(
 		}
 	}
 
-	return evaluateResult(simManager.state, aiPlayerId);
+	// Scoring-aware evaluation: uses Gaple scoring rules
+	return evaluateGameResult(simManager.state, aiPlayerId, teamId);
 }
 
 export function createPlayoutSummary(state: GameState, move: Move): string {

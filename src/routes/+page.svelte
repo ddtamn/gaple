@@ -54,11 +54,8 @@
 				<h1
 					class="bg-gradient-to-br from-primary to-secondary bg-clip-text font-headline text-6xl font-black tracking-tighter text-transparent md:text-8xl"
 				>
-					DOMINDO
+					DOMI.gg
 				</h1>
-				<p class="mt-2 font-body text-sm font-semibold tracking-widest text-stone-400 uppercase">
-					Gaple Digital Nusantara
-				</p>
 			</div>
 
 			<div class="flex w-64 flex-col gap-4">

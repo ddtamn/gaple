@@ -411,7 +411,7 @@
 	{/if}
 
 	<!-- ── LAYER 3: 3 Opponent Players ────────────────────────── -->
-	<div class="shrink-0 border-b border-stone-800 px-2 py-2 md:px-4 md:py-3">
+	<div class="shrink-0 border-b border-stone-800 px-2 py-3 md:px-6 md:py-4">
 		{#if currentGameState}
 			{@const leftPlayer = p(3)}
 			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
@@ -419,8 +419,8 @@
 			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
 			{@const rightPlayer = p(1)}
 			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
-			<!-- Flex row: left / top / right opponents with natural sizing -->
-			<div class="flex items-start justify-center gap-2">
+			<!-- Spread opponents across the row: left / top / right with generous gaps -->
+			<div class="flex items-start justify-evenly gap-4 md:gap-8">
 			<!-- Left Opponent (index 3) - shifted down -->
 			{#if leftPlayer}
 				<div class="flex translate-y-6 flex-col items-center gap-1 md:translate-y-8 md:gap-2">

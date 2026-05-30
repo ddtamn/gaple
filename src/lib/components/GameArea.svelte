@@ -306,11 +306,11 @@
 <!-- ══════════════════ MAIN FLEXBOX LAYOUT ══════════════════ -->
 <div
 	role="presentation"
-	class="flex h-dvh w-full flex-col overflow-hidden bg-background text-stone-100 select-none"
+	class="flex h-dvh w-full flex-col overflow-hidden bg-[radial-gradient(ellipse_at_50%_40%,rgba(212,163,115,0.12)_0%,transparent_70%)] text-stone-100 select-none"
 	onclick={() => (selectedTile = null)}
 >
 	<!-- ── LAYER 1: Game Info Bar ─────────────────────────────── -->
-	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-stone-800 px-3 py-2 md:px-6 md:py-3">
+	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2  px-3 py-2 md:px-6 md:py-3">
 		<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
 			<span class="font-body text-xs text-stone-500">Mode:</span>
 			<span class="font-body text-xs font-semibold text-stone-100 uppercase">{mode?.replace(/-/g, ' ')}</span>
@@ -337,7 +337,7 @@
 		{/if}
 
 		<!-- Status messages -->
-		<div class="flex items-center gap-2">
+		<!-- <div class="flex items-center gap-2">
 			{#if selectedTile && !currentGameState?.result}
 				<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-primary">
 					Kartu dipilih — klik ← / → untuk menempatkan
@@ -349,12 +349,12 @@
 					Menunggu giliran pemain lain...
 				</p>
 			{/if}
-		</div>
+		</div>  -->
 	</div>
 
 	<!-- ── LAYER 2: Round Result / Match Over (inline, no modal) ── -->
 	{#if currentGameState?.result}
-		<div class="shrink-0 border-b border-stone-800 px-4 py-3">
+		<div class="shrink-0  px-4 py-3">
 			{#if isMatchOver}
 				<!-- Match completed -->
 				<div class="mx-auto max-w-lg text-center">
@@ -411,7 +411,7 @@
 	{/if}
 
 	<!-- ── LAYER 3: 3 Opponent Players ────────────────────────── -->
-	<div class="shrink-0 border-b border-stone-800 px-2 py-3 md:px-6 md:py-4">
+	<div class="shrink-0">
 		{#if currentGameState}
 			{@const leftPlayer = p(3)}
 			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
@@ -420,10 +420,10 @@
 			{@const rightPlayer = p(1)}
 			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
 			<!-- Spread opponents across the row: left / top / right with generous gaps -->
-			<div class="flex items-start justify-evenly gap-4 md:gap-8">
+			<div class="flex w-full">
 			<!-- Left Opponent (index 3) - shifted down -->
-			{#if leftPlayer}
-				<div class="flex translate-y-6 flex-col items-center gap-1 md:translate-y-8 md:gap-2">
+			{#if leftPlayer }
+				<div class="flex w-[calc(100%/3)] translate-y-6 flex-col items-center gap-1 md:translate-y-8">
 					<BotAvatar
 						player={leftPlayer}
 						isMyTurn={currentGameState.turnIndex === leftTurnIndex}
@@ -454,7 +454,7 @@
 
 			<!-- Top Opponent (index 2) - normal position -->
 			{#if topPlayer}
-				<div class="flex flex-col items-center gap-1 md:gap-2">
+				<div class="flex  w-[calc(100%/3)] flex-col items-center gap-1">
 					<BotAvatar
 						player={topPlayer}
 						isMyTurn={currentGameState.turnIndex === topTurnIndex}
@@ -485,7 +485,7 @@
 
 			<!-- Right Opponent (index 1) - shifted down -->
 			{#if rightPlayer}
-				<div class="flex translate-y-6 flex-col items-center gap-1 md:translate-y-8 md:gap-2">
+				<div class="flex w-[calc(100%/3)]  translate-y-6 flex-col items-center gap-1">
 					<BotAvatar
 						player={rightPlayer}
 						isMyTurn={currentGameState.turnIndex === rightTurnIndex}
@@ -524,7 +524,7 @@
 			bind:clientWidth={boardWidth}
 			bind:clientHeight={boardHeight}
 		>
-			<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(212,163,115,0.12)_0%,transparent_70%)]"></div>
+			<div class="pointer-events-none absolute inset-0"></div>
 			{#if currentGameState?.board.playedTiles.length === 0 && !showDropZones}
 				<p class="px-4 text-center font-body text-sm font-medium text-stone-500 md:text-lg">
 					Meja kosong. Pemain pertama mulai.

@@ -25,11 +25,12 @@
 		switch (size) {
 			case 'sm':
 				return {
-					container: vert ? 'h-[56px] w-[36px] flex-col' : 'h-[36px] w-[56px] flex-row',
+					container: vert ? 'h-[56px] w-[28px] flex-col' : 'h-[28px] w-[56px] flex-row',
 					dotCenter: 'h-2 w-2',
 					dotRegular: 'h-[4px] w-[4px]',
 					divider: vert ? 'h-full w-[55%]' : 'h-[55%] w-full',
-					gridPadding: 'p-[3px] gap-px'
+					gridPadding: 'p-[3px] gap-px',
+					rounded : "rounded-sm"
 				};
 			case 'lg':
 				return {
@@ -37,7 +38,8 @@
 					dotCenter: 'h-4 w-4',
 					dotRegular: 'h-2.5 w-2.5',
 					divider: vert ? 'h-full w-[75%]' : 'h-[75%] w-full',
-					gridPadding: 'p-2 gap-1'
+					gridPadding: 'p-2 gap-1',
+					rounded : "rounded-lg"
 				};
 			default: // 'md'
 				return {
@@ -45,13 +47,14 @@
 					dotCenter: 'h-3.5 w-3.5',
 					dotRegular: 'h-2 w-2',
 					divider: vert ? 'h-full w-[70%]' : 'h-[70%] w-full',
-					gridPadding: 'p-1.5 gap-0.5'
+					gridPadding: 'p-1.5 gap-0.5',
+					rounded : "rounded-lg"
 				};
 		}
 	});
 </script>
 
-<div class="flex overflow-hidden rounded-lg border border-stone-300 bg-white {s.container}">
+<div class="flex overflow-hidden {s.rounded} border border-stone-300 bg-white {s.container}">
 	<div
 		class="grid h-full min-h-0 w-full min-w-0 flex-1 grid-cols-3 grid-rows-3 place-items-center {s.gridPadding} {!isVertical
 			? 'rotate-90'

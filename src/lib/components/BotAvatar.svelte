@@ -15,11 +15,11 @@
 	const sizeClass = $derived(
 		size === 'sm'
 			? {
-					container: 'w-10 md:w-14 p-1 md:p-1.5 mb-2 md:mb-4',
+					container: 'w-10 md:w-14 p-1 md:p-1.5',
 					avatar: 'h-8 w-8 md:h-10 md:w-10'
 				}
 			: {
-					container: 'w-14 md:w-[80px] p-1.5 md:p-2 mb-4 md:mb-8',
+					container: 'w-14 md:w-[80px] p-1.5',
 					avatar: 'h-10 w-10 md:h-12 md:w-12'
 				}
 	);

@@ -27,12 +27,17 @@
 	// Determine the PartyKit host
 	function resolvePartyKitHost(): string {
 		if (typeof window === 'undefined') return 'localhost:1999';
+		// Production: use env var or default to partykit.dev
+		if (import.meta.env.PUBLIC_PARTYKIT_HOST) {
+			return import.meta.env.PUBLIC_PARTYKIT_HOST;
+		}
 		const hostname = window.location.hostname;
 		if (hostname.endsWith('.app.github.dev')) {
 			const base = hostname.replace(/-?\d+\.app\.github\.dev$/, '');
 			return `${base}-1999.app.github.dev`;
 		}
 		if (hostname === 'localhost' || hostname === '127.0.0.1') return 'localhost:1999';
+		// Fallback: assume PartyKit is on same hostname port 1999 (dev only)
 		return `${hostname}:1999`;
 	}
 

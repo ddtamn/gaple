@@ -1,0 +1,4 @@
+{
+	"name": "gaple-party",
+	"main": "src/parties/game-room.ts"
+}

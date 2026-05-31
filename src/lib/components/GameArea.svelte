@@ -135,29 +135,35 @@
 	$effect(() => {
 		const hasResult = !!currentGameState?.result;
 
-		if (!hasResult) {
+		// No countdown for match-over (user clicks a button instead)
+		if (!hasResult || isMatchOver) {
 			countdown = 0;
 			return;
 		}
 
-		// Round just finished — start auto-advance countdown
-		const duration = isMatchOver ? 15 : 10;
-		countdown = duration;
+		// Round just finished — start auto-advance countdown for next round
+		countdown = 10;
 
 		const interval = setInterval(() => {
 			countdown--;
 			if (countdown <= 0) {
 				clearInterval(interval);
-				if (isMatchOver) {
-					onExit();
-				} else {
-					nextRound();
-				}
+				nextRound();
 			}
 		}, 1000);
 
 		return () => clearInterval(interval);
 	});
+
+	function handleReplay() {
+		if (isMultiplayer) {
+			onExit();
+		} else {
+			// Reset local game: clear game so $effect re-initializes it
+			game = null;
+			currentRound = 1;
+		}
+	}
 
 // ── Team Scores (Coop Mode) ──────────────────────────────────────
 	const teamScores = $derived.by(() => {
@@ -677,19 +683,40 @@
 	</div>
 
 
-	<!-- ── LAYER 5: Next Round CTA (clickable, with countdown) ── -->
-	{#if currentGameState?.result && countdown > 0}
-		<div class="shrink-0 border-t border-stone-800 px-4 py-2.5">
-			<div class="flex items-center justify-center gap-2">
-				<button
-					class="font-body text-sm text-primary underline underline-offset-2 transition hover:text-primary-hover active:text-primary-active"
-					onclick={isMatchOver ? onExit : nextRound}
-				>
-					{isMatchOver ? 'Kembali ke Lobi' : 'Ronde Berikutnya'}
-				</button>
-				<span class="font-headline text-sm font-bold text-primary">{countdown}</span>
+	<!-- ── LAYER 5: Next Round CTA / Match Over Buttons ── -->
+	{#if currentGameState?.result}
+		{#if isMatchOver}
+			<!-- Match completed — show action buttons without countdown -->
+			<div class="shrink-0 border-t border-stone-800 px-4 py-3">
+				<div class="flex items-center justify-center gap-3">
+					<button
+						class="rounded-lg border border-stone-700 bg-surface px-6 py-2.5 font-body text-sm font-semibold text-stone-200 transition hover:bg-warm-hover active:scale-[0.98]"
+						onclick={onExit}
+					>
+						← Kembali ke Lobi
+					</button>
+					<button
+						class="rounded-lg bg-primary px-6 py-2.5 font-body text-sm font-semibold text-white transition hover:bg-primary-hover active:scale-[0.98]"
+						onclick={handleReplay}
+					>
+						🔄 Main Lagi
+					</button>
+				</div>
 			</div>
-		</div>
+		{:else if countdown > 0}
+			<!-- Between rounds — countdown to next round -->
+			<div class="shrink-0 border-t border-stone-800 px-4 py-2.5">
+				<div class="flex items-center justify-center gap-2">
+					<button
+						class="font-body text-sm text-primary underline underline-offset-2 transition hover:text-primary-hover active:text-primary-active"
+						onclick={nextRound}
+					>
+						Ronde Berikutnya
+					</button>
+					<span class="font-headline text-sm font-bold text-primary">{countdown}</span>
+				</div>
+			</div>
+		{/if}
 	{/if}
 
 	<!-- ── LAYER 6: Main Player Hand ──────────────────────────── -->

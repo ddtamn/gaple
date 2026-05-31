@@ -36,54 +36,57 @@
 	const isHandVertical = true;
 
 	const hiddenTileSize = $derived(
-		tileSize === 'sm' ? 'h-[56px] w-[1px] flex-col' : 'h-28 w-14 flex-col'
+		tileSize === 'sm' ? 'h-[86px] w-[43px] flex-col' : 'h-28 w-14 flex-col'
 	);
-	const hiddenDotSize = $derived(tileSize === 'sm' ? 'h-5 w-5' : 'h-8 w-8');
+	const hiddenDotSize = $derived(tileSize === 'sm' ? 'h-[10px] w-[10px]' : 'h-8 w-8');
 </script>
 
 <div class="relative flex flex-col items-center justify-center {isMain ? 'origin-bottom scale-[1.3]' : ''}">
 	<div
 		class="transition-all duration-150 flex flex-wrap justify-center items-center gap-0.5 px-2"
 	>
-		{#each player.hand as tile (tile.id)}
-			{@const isActive = activeTileId === tile.id}
-			{@const isPlayable = showCardFaces && playableTileIds.has(tile.id)}
-			{@const tileDisabled = !isMyTurn || !isPlayable}
-			<button
-				disabled={tileDisabled}
-				class="flex cursor-pointer transition-all duration-150 select-none
-                {isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
-                {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
-                {isActive && showCardFaces ? 'scale-90 opacity-30' : ''}
-                {isMyTurn && selectedTileId !== null && !isActive
-					? 'rounded-lg ring-2 ring-primary/20'
-					: ''}"
-				onmousedown={(e) => {
-					if (!isMyTurn || !isPlayable) return;
-					ondragstart(tile, e);
-				}}
-				onclick={(e) => {
-					if (!isMyTurn || !isPlayable) return;
-					ontileclick(tile, e);
-				}}
-			>
-				{#if showCardFaces}
+		{#if showCardFaces}
+			{#each player.hand as tile (tile.id)}
+				{@const isActive = activeTileId === tile.id}
+				{@const isPlayable = playableTileIds.has(tile.id)}
+				{@const tileDisabled = !isMyTurn || !isPlayable}
+				<button
+					disabled={tileDisabled}
+					class="flex cursor-pointer transition-all duration-150 select-none
+					{isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
+					{isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
+					{isActive ? 'scale-90 opacity-30' : ''}
+					{isMyTurn && selectedTileId !== null && !isActive
+						? 'rounded-lg ring-2 ring-primary/20'
+						: ''}"
+					onmousedown={(e) => {
+						if (!isMyTurn || !isPlayable) return;
+						ondragstart(tile, e);
+					}}
+					onclick={(e) => {
+						if (!isMyTurn || !isPlayable) return;
+						ontileclick(tile, e);
+					}}
+				>
 					<DominoTile {tile} isVertical={isHandVertical} size={tileSize} />
-				{:else}
+				</button>
+			{/each}
+		{:else}
+			<div class="relative flex items-center gap-px flex-wrap justify-center">
+				{#each { length: player.hand.length } as _, i(i)}
 					<div
-						class="flex overflow-hidden rounded-lg border border-stone-600 bg-stone-800 {hiddenTileSize}"
+						class="flex overflow-hidden rounded border border-stone-600 bg-stone-800 w-[20px] h-[40px]"
 					>
 						<div class="flex h-full w-full items-center justify-center">
-							<div class="{hiddenDotSize} rounded-full border-2 border-stone-600/50 bg-stone-700/30"></div>
+							<div class=" size-[7px] rounded-full border-stone-600/50 bg-primary"></div>
 						</div>
 					</div>
-				{/if}
-			</button>
-		{/each}
+				{/each}
+			</div>
+		{/if}
 	</div>
 
-	{#if isMain}
-		<div class="w-full scale-[0.8] bg-black/20">t</div>
+ {#if isMain}
 		<div class="hidden w-full origin-bottom scale-[0.8] bg-red-300">
 			<div class="relative flex w-fit items-center gap-2">
 				{#if !isMarked}

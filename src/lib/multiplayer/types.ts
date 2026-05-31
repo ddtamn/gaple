@@ -43,6 +43,8 @@ export interface GameStartMessage {
 	seed: string;
 	state: GameState;
 	currentRound: number;
+	/** Maps connectionId → game state player index (0-3) */
+	seatAssignment: Record<string, number>;
 }
 
 export interface MoveAcceptedMessage {

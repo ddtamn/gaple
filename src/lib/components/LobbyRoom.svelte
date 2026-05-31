@@ -53,15 +53,16 @@
 
 		const hostname = window.location.hostname;
 
-		// GitHub Codespaces
+		// GitHub Codespaces — proxy through Vite dev server (same port as app)
 		if (hostname.endsWith('.app.github.dev')) {
-			const base = hostname.replace(/-?\d+\.app\.github\.dev$/, '');
-			return `${base}-1999.app.github.dev`;
+			// Vite proxies /parties/* WebSocket connections to PartyKit on :1999
+			return window.location.host;
 		}
 
-		// Local development
+		// Local development — proxy through Vite dev server
 		if (hostname === 'localhost' || hostname === '127.0.0.1') {
-			return 'localhost:1999';
+			// Vite proxies /parties/* WebSocket connections to PartyKit on :1999
+			return window.location.host;
 		}
 
 		// Production fallback — PUBLIC_PARTYKIT_HOST was NOT set.

@@ -15,7 +15,7 @@
 	const sizeClass = $derived(
 		size === 'sm'
 			? {
-					container: 'w-10 md:w-14 p-1 md:p-1.5',
+					container: 'w-12 md:w-14 p-1 md:p-1.5',
 					avatar: 'h-8 w-8 md:h-10 md:w-10'
 				}
 			: {
@@ -48,7 +48,7 @@
 	</div>
 	{#if showScore}
 		<span
-			class="mt-2 w-full rounded bg-warm-hover py-0.5 text-center font-body text-[12px] font-semibold text-primary"
+			class="w-full rounded bg-warm-hover text-center font-body text-[12px] font-semibold text-primary"
 		>
 			{winCount}
 		</span>

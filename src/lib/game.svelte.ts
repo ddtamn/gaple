@@ -1,6 +1,5 @@
 import { GameManager as PureGameManager } from '../engine/game';
 import type { GameState, Move, TeamConfig } from '../engine/types';
-// import { selectAiMove } from '../engine/ai';
 import AiWorker from './ai.worker?worker';
 
 export class SvelteGameManager {

@@ -11,7 +11,7 @@ type ServerMessage =
 	| { type: 'PLAYER_LEFT'; playerId: string }
 	| { type: 'PLAYER_READY'; playerId: string }
 	| { type: 'ALL_READY' }
-	| { type: 'GAME_START'; seed: string; state: GameState; currentRound: number }
+	| { type: 'GAME_START'; seed: string; state: GameState; currentRound: number; seatAssignment: Record<string, number> }
 	| { type: 'MOVE_ACCEPTED'; state: GameState }
 	| { type: 'GAME_OVER'; state: GameState }
 	| { type: 'ERROR'; message: string }
@@ -239,12 +239,20 @@ export default class GapleRoom implements Server {
 		this.game.startGame();
 		this.currentRound = 1;
 
+		// Build seat assignment: connectionId → game state player index
+		const seatAssignment: Record<string, number> = {};
+		for (let i = 0; i < this.players.length; i++) {
+			const p = this.players[i];
+			if (p) seatAssignment[p.id] = i;
+		}
+
 		// Broadcast initial state
 			this.broadcast({
 				type: 'GAME_START',
 				seed,
 				state: this.game.state,
-				currentRound: this.currentRound
+				currentRound: this.currentRound,
+				seatAssignment
 			});
 
 		// Run bot turns if applicable (coop-vs-ai: AIs are at seats 1 and 3)
@@ -429,11 +437,19 @@ export default class GapleRoom implements Server {
 		this.currentRound++;
 		this.game.startGame(previousWinnerId);
 
+		// Build seat assignment for the new round
+		const seatAssignment: Record<string, number> = {};
+		for (let i = 0; i < this.players.length; i++) {
+			const p = this.players[i];
+			if (p) seatAssignment[p.id] = i;
+		}
+
 		this.broadcast({
 			type: 'GAME_START',
 			seed: this.game.state.seed,
 			state: this.game.state,
-			currentRound: this.currentRound
+			currentRound: this.currentRound,
+			seatAssignment
 		});
 
 		// Run bot turns if applicable

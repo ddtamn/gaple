@@ -5,6 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
+		"dev:all": "concurrently --names 'VITE,PARTYKIT' --prefix-colors 'blue,green' 'vite dev' 'partykit dev'",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
@@ -28,6 +29,7 @@
 		"@tailwindcss/vite": "^4.2.2",
 		"@types/node": "^24",
 		"@vitest/browser-playwright": "^4.1.3",
+		"concurrently": "^10.0.0",
 		"eslint": "^10.2.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.17.0",
@@ -48,6 +50,7 @@
 	"dependencies": {
 		"embla-carousel-svelte": "^8.6.0",
 		"partykit": "^0.0.115",
-		"partysocket": "^1.1.19"
+		"partysocket": "^1.1.19",
+		"web-haptics": "^0.0.6"
 	}
 }

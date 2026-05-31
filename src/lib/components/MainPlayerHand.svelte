@@ -1,11 +1,8 @@
 <script lang="ts">
-	import emblaCarouselSvelte from 'embla-carousel-svelte';
 	import { getRemainingTilesCount } from '../../engine/utils';
 	import TileIcon from '$lib/icons/TileIcon.svelte';
 	import DominoTile from './DominoTile.svelte';
-	import { untrack } from 'svelte';
 
-	// 1. IMPORT ANIMASI FLIP BAWAAN SVELTE
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 
@@ -25,39 +22,6 @@
 	} = $props();
 
 	let boardTiles = $derived(game?.state?.board?.playedTiles ?? currentGameState?.board?.playedTiles ?? []);
-	let sortedHand = $state<any[]>([]);
-
-	$effect(() => {
-		if (isMyTurn && player.hand.length > 4) {
-			const unplayable = [];
-			const playable = [];
-
-			for (const tile of player.hand) {
-				if (playableTileIds.has(tile.id)) {
-					playable.push(tile);
-				} else {
-					unplayable.push(tile);
-				}
-			}
-
-			const half = Math.ceil(unplayable.length / 2);
-			const leftUnplayable = unplayable.slice(0, half);
-			const rightUnplayable = unplayable.slice(half);
-
-			sortedHand = [...leftUnplayable, ...playable, ...rightUnplayable];
-		} else {
-			const currentSortedHand = untrack(() => sortedHand);
-
-			const currentHandIds = new Set(player.hand.map((t: any) => t.id));
-			let updated = currentSortedHand.filter((tile) => currentHandIds.has(tile.id));
-
-			if (updated.length === 0 || currentSortedHand.length !== player.hand.length) {
-				updated = [...player.hand];
-			}
-
-			sortedHand = updated;
-		}
-	});
 
 	let tracker = $derived(getRemainingTilesCount(boardTiles, player.hand));
 	const remainings = $derived(
@@ -67,68 +31,125 @@
 		}))
 	);
 
-	const emblaOptions = {
-		options: {
-			align: 'center' as const,
-			dragFree: true,
-			// Prevent Embla from swallowing click events on tile buttons
-			watchDrag: (emblaApi: any, event: MouseEvent | TouchEvent) => {
-				const target = event.target as HTMLElement;
-				// Don't start drag when interacting with a tile button
-				if (target.closest('button')) return false;
-				return true;
+	// ── Reorder / placement drag state (unified pointer events) ──
+	let dragState = $state<{
+		tileId: string;
+		fromIndex: number;
+		isReordering: boolean;
+		startX: number;
+		startY: number;
+	} | null>(null);
+
+	// Flag to prevent onclick after a reorder drag (plain var, not reactive — only used in event handlers)
+	let _wasReordered = false;
+
+	// Calculate which slot the cursor is hovering over based on X position
+	function getTargetIndex(clientX: number): number {
+		const container = document.querySelector('.hand-container');
+		if (!container) return -1;
+		const buttons = container.querySelectorAll('button');
+		for (let i = 0; i < buttons.length; i++) {
+			const rect = buttons[i].getBoundingClientRect();
+			if (clientX < rect.left + rect.width / 2) {
+				return i;
 			}
-		},
-		plugins: []
-	};
-
-	let emblaApi = $state<any>(null);
-
-	function onEmblaInit(event: CustomEvent) {
-		emblaApi = event.detail;
-	}
-
-	$effect(() => {
-		if (emblaApi && isMyTurn && sortedHand.length > 4) {
-			// 3. TAMBAH JEDA: Tunggu animasi FLIP selesai (300ms) sebelum auto-scroll ke tengah
-			setTimeout(() => {
-				const middleIndex = Math.floor(sortedHand.length / 2);
-				emblaApi.scrollTo(middleIndex);
-			}, 300);
 		}
-	});
+		return buttons.length - 1;
+	}
 </script>
 
 <div
-	class="embla mb-2 w-full rounded-lg md:max-w-2xl"
-	use:emblaCarouselSvelte={emblaOptions}
-	onemblaInit={onEmblaInit}
+	class="hand-container flex justify-center gap-0.5 px-1 md:gap-1 md:px-2 [&::-webkit-scrollbar]:hidden"
+	style="flex-wrap:nowrap;"
 >
-	<div class="embla__container flex justify-center gap-1">
-		{#each sortedHand as tile (tile.id)}
-			{@const isActive = activeTileId === tile.id}
-			{@const isPlayable = playableTileIds.has(tile.id)}
+	{#each player.hand as tile, index (tile.id)}
+		{@const isActive = activeTileId === tile.id}
+		{@const isPlayable = playableTileIds.has(tile.id)}
+		{@const isReordering = dragState?.tileId === tile.id && dragState?.isReordering}
 
-			<button
-				animate:flip={{ duration: 400, easing: quintOut }}
-				disabled={!isMyTurn || !isPlayable}
-				class="embla__slide flex flex-[0_0_auto] cursor-pointer transition-all duration-150 select-none hover:-translate-y-2
+		<button
+			animate:flip={{ duration: 400, easing: quintOut }}
+			disabled={!isMyTurn || !isPlayable}
+			class="flex cursor-grab transition-all duration-150 select-none hover:-translate-y-2
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
-                {isActive ? '-translate-y-2 opacity-30' : ''}
+                {isActive && !isReordering ? '-translate-y-2 opacity-30' : ''}
+                {isReordering ? 'opacity-40' : ''}
                "
-				onmousedown={(e) => {
-					if (!isMyTurn || !isPlayable) return;
-					ondragstart(tile, e);
-				}}
-				onclick={(e) => {
-					if (!isMyTurn || !isPlayable) return;
-					ontileclick(tile, e);
-				}}
-			>
-				<DominoTile {tile} isVertical={true} />
-			</button>
-		{/each}
-	</div>
+			style="touch-action:none"
+			onpointerdown={(e) => {
+				if (!isMyTurn || !isPlayable) return;
+				e.preventDefault();
+				const btn = e.currentTarget as HTMLElement;
+				btn.setPointerCapture(e.pointerId);
+				_wasReordered = false;
+				dragState = {
+					tileId: tile.id,
+					fromIndex: index,
+					isReordering: false,
+					startX: e.clientX,
+					startY: e.clientY
+				};
+			}}
+			onpointermove={(e) => {
+				if (!dragState || dragState.tileId !== tile.id) return;
+
+				const dx = e.clientX - dragState.startX;
+				const dy = e.clientY - dragState.startY;
+				const absDx = Math.abs(dx);
+				const absDy = Math.abs(dy);
+
+				if (!dragState.isReordering) {
+					// Upward movement → placement drag
+					if (absDy > 12 && dy < 0 && absDy > absDx) {
+						const btn = e.currentTarget as HTMLElement;
+						btn.releasePointerCapture(e.pointerId);
+						ondragstart(tile, e);
+						dragState = null;
+						return;
+					}
+					// Sideways movement → start reorder
+					if (absDx > 15 && absDx > absDy) {
+						dragState = { ...dragState, isReordering: true };
+					}
+					// Cancel if movement is too ambiguous
+					if (absDy > 40 && absDx > 40) {
+						dragState = null;
+						return;
+					}
+				}
+
+				if (dragState?.isReordering) {
+					const targetIndex = getTargetIndex(e.clientX);
+					if (targetIndex >= 0 && targetIndex !== dragState.fromIndex) {
+						const moved = player.hand.splice(dragState.fromIndex, 1)[0];
+						player.hand.splice(targetIndex, 0, moved);
+						_wasReordered = true;
+						dragState = { ...dragState, fromIndex: targetIndex };
+					}
+				}
+			}}
+			onpointerup={() => {
+				if (dragState?.isReordering) {
+					_wasReordered = true;
+					// Reset flag after click has a chance to fire
+					requestAnimationFrame(() => {
+						_wasReordered = false;
+					});
+				}
+				dragState = null;
+			}}
+			onpointercancel={() => {
+				dragState = null;
+			}}
+			onclick={(e) => {
+				if (!isMyTurn || !isPlayable) return;
+				if (_wasReordered) return; // don't fire click after reorder
+				ontileclick(tile, e);
+			}}
+		>
+			<DominoTile {tile} isVertical={true} size="xs" />
+		</button>
+	{/each}
 </div>
 
 <div class="px-8">
@@ -160,8 +181,3 @@
 </div>
 </div>
 
-<style>
-	.embla__container {
-		touch-action: pan-y;
-	}
-</style>

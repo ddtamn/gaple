@@ -43,7 +43,7 @@
 
 <div class="relative flex flex-col items-center justify-center {isMain ? 'origin-bottom scale-[1.3]' : ''}">
 	<div
-		class="transition-all duration-150 flex flex-wrap justify-center items-center gap-1"
+		class="transition-all duration-150 flex flex-wrap justify-center items-center gap-0.5 px-2"
 	>
 		{#each player.hand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}

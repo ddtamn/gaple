@@ -1,5 +1,5 @@
 <script lang="ts">
-	export type TileSize = 'sm' | 'md' | 'lg';
+	export type TileSize = 'xs' | 'sm' | 'md' | 'lg';
 
 	interface Props {
 		tile: { left: number; right: number };
@@ -23,11 +23,20 @@
 	const s = $derived.by(() => {
 		const vert = isVertical;
 		switch (size) {
+			case 'xs':
+				return {
+					container: vert ? 'h-[86px] w-[43px] flex-col' : 'h-[43px] w-[86px] flex-row',
+					dotCenter: 'h-[10px] w-[10px]',
+					dotRegular: 'h-[6px] w-[6px]',
+					divider: vert ? 'h-full w-[62%]' : 'h-[62%] w-full',
+					gridPadding: 'p-1 gap-0.5',
+					rounded: 'rounded-md'
+				};
 			case 'sm':
 				return {
-					container: vert ? 'h-[56px] w-[28px] flex-col' : 'h-[28px] w-[56px] flex-row',
-					dotCenter: 'h-2 w-2',
-					dotRegular: 'h-[4px] w-[4px]',
+					container: vert ? 'h-[40px] w-[20px] flex-col' : 'h-[20px] w-[40px] flex-row',
+					dotCenter: 'h-[5px] w-[5px]',
+					dotRegular: 'h-[3px] w-[3px]',
 					divider: vert ? 'h-full w-[55%]' : 'h-[55%] w-full',
 					gridPadding: 'p-[3px] gap-px',
 					rounded : "rounded-sm"

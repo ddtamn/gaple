@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { env } from '$env/dynamic/public';
 	import { getMultiplayer } from '$lib/multiplayer/room.svelte';
 
 	let {
@@ -30,19 +31,24 @@
 	/**
 	 * Resolve the PartyKit host to connect to.
 	 *
-	 * IMPORTANT: In production, PUBLIC_PARTYKIT_HOST must be set at BUILD TIME
-	 * because Vite statically replaces `import.meta.env.PUBLIC_*` variables
-	 * during `npm run build`. Setting it in the runtime environment won't work.
+	 * Uses SvelteKit's $env/dynamic/public which reads from process.env at
+	 * RUNTIME on the server, then is serialized into the HTML for the client.
+	 * This means you can set PUBLIC_PARTYKIT_HOST in Vercel's dashboard
+	 * as a regular (non-build-time) environment variable and it will work.
 	 *
-	 * Build command example:
-	 *   PUBLIC_PARTYKIT_HOST=gaple-party.USERNAME.partykit.dev npm run build
+	 * Deploy the PartyKit server first:
+	 *   npx partykit deploy
+	 * Then copy the URL (e.g. gaple-party.USERNAME.partykit.dev) and set it as
+	 *   PUBLIC_PARTYKIT_HOST=gaple-party.USERNAME.partykit.dev
+	 * in your Vercel project's Environment Variables (no special build flag needed).
 	 */
 	function resolvePartyKitHost(): string {
 		if (typeof window === 'undefined') return 'localhost:1999';
 
-		// Production: use env var (must be set at build time!)
-		if (import.meta.env.PUBLIC_PARTYKIT_HOST) {
-			return import.meta.env.PUBLIC_PARTYKIT_HOST;
+		// Production: use the runtime env var (set in Vercel dashboard)
+		const partyKitHost = env.PUBLIC_PARTYKIT_HOST;
+		if (partyKitHost) {
+			return partyKitHost;
 		}
 
 		const hostname = window.location.hostname;
@@ -58,14 +64,12 @@
 			return 'localhost:1999';
 		}
 
-		// Production fallback — PUBLIC_PARTYKIT_HOST was NOT set at build time.
-		// The old fallback `${hostname}:1999` is wrong for production.
+		// Production fallback — PUBLIC_PARTYKIT_HOST was NOT set.
 		console.error(
 			`[PartyKit] PUBLIC_PARTYKIT_HOST is not configured. ` +
-			`Set it at build time, e.g.: PUBLIC_PARTYKIT_HOST=${PARTYKIT_PROJECT}.<your-account>.partykit.dev npm run build`
+			`Add it to your Vercel project's environment variables: ` +
+			`PUBLIC_PARTYKIT_HOST=${PARTYKIT_PROJECT}.<your-account>.partykit.dev`
 		);
-		// Return empty — PartySocket will default to the current page host,
-		// which will fail, but at least it won't incorrectly try port 1999.
 		return '';
 	}
 

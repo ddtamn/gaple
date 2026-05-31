@@ -26,8 +26,8 @@
 	style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
 >
 	<button
-		class="cursor-copy rounded-2xl border-2 border-dashed border-amber-300 bg-amber-400/15 p-2
-        opacity-70 shadow-[0_0_24px_rgba(74,222,128,0.28)] transition hover:bg-amber-400/25 hover:opacity-95
+		class="cursor-copy rounded-lg border-2 border-dashed border-primary/40 bg-primary/10 p-2
+        opacity-70 transition hover:bg-primary/20 hover:opacity-95
         {dropZoneHovered === tile.side ? 'scale-105 opacity-95' : ''}"
 		onmouseenter={() => onhover(tile.side)}
 		onmouseleave={() => onhover(null)}

@@ -13,7 +13,9 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"partykit": "partykit",
+		"partykit:dev": "partykit dev"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
@@ -44,6 +46,8 @@
 		"vitest-browser-svelte": "^2.1.0"
 	},
 	"dependencies": {
-		"embla-carousel-svelte": "^8.6.0"
+		"embla-carousel-svelte": "^8.6.0",
+		"partykit": "^0.0.115",
+		"partysocket": "^1.1.19"
 	}
 }

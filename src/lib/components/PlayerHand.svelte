@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Domino } from '../../engine/types';
 	import DominoTile from './DominoTile.svelte';
+	import type { TileSize } from './DominoTile.svelte';
 
 	interface Props {
 		player: { id: string; name: string; hand: Domino[] };
@@ -11,6 +12,8 @@
 		playableTileIds: Set<string>;
 		activeTileId: string | null;
 		selectedTileId: string | null;
+		showCardFaces?: boolean;
+		tileSize?: TileSize;
 		ondragstart: (tile: Domino, e: MouseEvent) => void;
 		ontileclick: (tile: Domino, e: MouseEvent) => void;
 	}
@@ -24,30 +27,36 @@
 		playableTileIds,
 		activeTileId,
 		selectedTileId,
+		showCardFaces = true,
+		tileSize = 'sm',
 		ondragstart,
 		ontileclick
 	}: Props = $props();
 
 	const isHandVertical = true;
+
+	const hiddenTileSize = $derived(
+		tileSize === 'sm' ? 'h-[56px] w-[1px] flex-col' : 'h-28 w-14 flex-col'
+	);
+	const hiddenDotSize = $derived(tileSize === 'sm' ? 'h-5 w-5' : 'h-8 w-8');
 </script>
 
-<div class="relative flex flex-col items-center gap-2 {isMain ? 'origin-bottom scale-[1.3]' : ''}">
+<div class="relative flex flex-col items-center justify-center {isMain ? 'origin-bottom scale-[1.3]' : ''}">
 	<div
-		class="flex flex-row flex-wrap justify-center rounded-2xl transition-all duration-150 md:flex-nowrap {isMain
-			? 'w-[90vw] gap-1 sm:w-[280px] md:w-max md:gap-2'
-			: 'w-[270px] gap-1 p-2 md:w-max md:gap-2 md:p-3'}"
+		class="transition-all duration-150 flex flex-wrap justify-center items-center gap-1"
 	>
 		{#each player.hand as tile (tile.id)}
 			{@const isActive = activeTileId === tile.id}
-			{@const isPlayable = playableTileIds.has(tile.id)}
+			{@const isPlayable = showCardFaces && playableTileIds.has(tile.id)}
+			{@const tileDisabled = !isMyTurn || !isPlayable}
 			<button
-				disabled={!isMyTurn || !isPlayable}
+				disabled={tileDisabled}
 				class="flex cursor-pointer transition-all duration-150 select-none
                 {isHandVertical ? 'hover:-translate-y-2' : 'hover:-translate-x-2'}
                 {isMyTurn && isPlayable ? 'opacity-100' : 'opacity-40'}
-                {isActive ? 'scale-90 opacity-30' : ''}
+                {isActive && showCardFaces ? 'scale-90 opacity-30' : ''}
                 {isMyTurn && selectedTileId !== null && !isActive
-					? 'rounded-xl ring-2 ring-white/20'
+					? 'rounded-lg ring-2 ring-primary/20'
 					: ''}"
 				onmousedown={(e) => {
 					if (!isMyTurn || !isPlayable) return;
@@ -58,7 +67,17 @@
 					ontileclick(tile, e);
 				}}
 			>
-				<DominoTile {tile} isVertical={isHandVertical} />
+				{#if showCardFaces}
+					<DominoTile {tile} isVertical={isHandVertical} size={tileSize} />
+				{:else}
+					<div
+						class="flex overflow-hidden rounded-lg border border-stone-600 bg-stone-800 {hiddenTileSize}"
+					>
+						<div class="flex h-full w-full items-center justify-center">
+							<div class="{hiddenDotSize} rounded-full border-2 border-stone-600/50 bg-stone-700/30"></div>
+						</div>
+					</div>
+				{/if}
 			</button>
 		{/each}
 	</div>

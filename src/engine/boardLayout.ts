@@ -1,17 +1,8 @@
-import type { Domino } from './types';
+import type { Domino, TilePosition } from './types';
+
+type LayoutSide = 'left' | 'center' | 'right';
 
 const SNAKE_ROW_LENGTH = 3;
-
-export interface TilePosition {
-	id: string;
-	left: number;
-	right: number;
-	x: number;
-	y: number;
-	rotation: number;
-	isBalak: boolean;
-	side: 'left' | 'center' | 'right';
-}
 
 type Direction = 'E' | 'S' | 'W' | 'N';
 
@@ -228,15 +219,13 @@ function getSideEndState(
 	}
 
 	return state;
-}
-
-export function calculateBoardLayout(
+}	export function calculateBoardLayout(
 	tiles: Domino[],
 	initialTileIndex: number,
 	TILE_W: number = 112,
 	TILE_H: number = 56,
 	GAP: number = 0
-): TilePosition[] {
+): (Domino & { x: number; y: number; rotation: number; isBalak: boolean; side: LayoutSide })[] {
 	if (tiles.length === 0) return [];
 
 	const layoutMap = new Map<number, TilePosition>();
@@ -337,7 +326,7 @@ export function calculateBoardPreviewPosition(
 	TILE_W: number = 112,
 	TILE_H: number = 56,
 	GAP: number = 0
-): Pick<TilePosition, 'x' | 'y' | 'rotation'> & { side: 'left' | 'right' } {
+)	: { x: number; y: number; rotation: number; side: 'left' | 'right' } {
 	if (tiles.length === 0) {
 		return { x: 0, y: 0, rotation: previewTile.left === previewTile.right ? 90 : 0, side };
 	}

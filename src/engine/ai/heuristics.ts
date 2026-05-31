@@ -1,7 +1,9 @@
-import type { Domino, GameState, Move } from '../types';
+import type { Domino, GameState, Move, TeamId } from '../types';
 import { playTile } from '../board';
 import { GameManager, calculateHandScore } from '../game';
 import { generateLegalMoves } from '../moves';
+import { evaluateGameResult } from '../scoring';
+import { areTeammates, isTeamMode } from '../teams';
 
 const HUMAN_PLAYER_ID = '0';
 
@@ -97,6 +99,23 @@ export function scoreTacticalMove(
 		score += human.hand.length <= 2 && humanMoves > 0 ? -120 : 0;
 	}
 
+	// Team-aware heuristics
+	if (isTeamMode(state)) {
+		const teammate = nextState.players.find(
+			(p) => p.id !== perspectivePlayerId && areTeammates(state, perspectivePlayerId, p.id)
+		);
+		if (teammate) {
+			// Prefer moves that keep teammate's options open
+			const teammateMoves = countLegalMovesForBoard(nextState, teammate.id);
+			score += teammateMoves * 6;
+
+			// If teammate is close to winning, help them
+			if (teammate.hand.length <= 2) {
+				score += 20;
+			}
+		}
+	}
+
 	const bestOpponentHandSize = Math.min(
 		...nextState.players
 			.filter((item) => item.id !== perspectivePlayerId)
@@ -130,28 +149,8 @@ export function scoreMoveForPlayout(state: GameState, move: Move): number {
 	);
 }
 
-export function evaluateResult(state: GameState, aiPlayerId: string): number {
-	if (!state.result) {
-		const aiPlayer = state.players.find((player) => player.id === aiPlayerId);
-		const aiScore = aiPlayer ? calculateHandScore(aiPlayer) : 99;
-		const bestOpponentScore = Math.min(
-			...state.players
-				.filter((player) => player.id !== aiPlayerId)
-				.map((player) => calculateHandScore(player))
-		);
-
-		return bestOpponentScore - aiScore;
-	}
-
-	const aiScore = state.result.scores[aiPlayerId] ?? 99;
-	const bestOpponentScore = Math.min(
-		...state.players
-			.filter((player) => player.id !== aiPlayerId)
-			.map((player) => state.result?.scores[player.id] ?? 99)
-	);
-	const margin = bestOpponentScore - aiScore;
-
-	return state.result.winnerId === aiPlayerId ? 100 + margin : -100 + margin;
+export function evaluateResult(state: GameState, aiPlayerId: string, teamId?: TeamId): number {
+	return evaluateGameResult(state, aiPlayerId, teamId);
 }
 
 export function summarizeMove(state: GameState, move: Move): string {

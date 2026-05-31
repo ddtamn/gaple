@@ -95,6 +95,11 @@ export function selectAiMove(
 
 	if (legalMoves.length === 0) return null;
 	if (legalMoves.length === 1) return legalMoves[0];
+
+	// Get team info for scoring-aware evaluation
+	const aiPlayer = state.players.find((p) => p.id === playerId);
+	const teamId = aiPlayer?.teamId;
+
 	if (shouldUseEndgameSolver(state, playerId)) {
 		const endgameMove = solveEndgameMove(state, playerId);
 		if (endgameMove) {
@@ -119,7 +124,8 @@ export function selectAiMove(
 			simManager.state = simState;
 
 			if (simManager.nextTurn(move.playerId, move.tileId, move.side)) {
-				playoutScore += playout(simManager.state, playerId, rng, config.maxPlayoutTurns);
+				// Scoring-aware playout: passes teamId for team mode
+				playoutScore += playout(simManager.state, playerId, rng, config.maxPlayoutTurns, teamId);
 			} else {
 				playoutScore -= 150;
 			}
@@ -127,7 +133,7 @@ export function selectAiMove(
 
 		const averageScore = playoutScore / config.iterations + tacticalScore * 2.75;
 		console.log(
-			`[AI ${playerId}] ${summarizeMove(state, move)}: taktis ${tacticalScore.toFixed(1)}, skor ${averageScore.toFixed(2)}`
+			`[AI ${playerId}] ${summarizeMove(state, move)}: taktis ${tacticalScore.toFixed(1)}, skor ${averageScore.toFixed(2)}${teamId !== undefined ? ` tim=${teamId}` : ''}`
 		);
 
 		if (averageScore > highestScore) {

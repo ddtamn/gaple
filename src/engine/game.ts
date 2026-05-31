@@ -1,4 +1,4 @@
-import type { Domino, GameResult, GameState, Move, Player } from './types';
+import type { Domino, GameResult, GameState, Move, Player, TeamConfig, TeamId } from './types';
 import { createBoard, playTile } from './board';
 import { createDomino } from './domino';
 import { createPlayer, receiveTiles, removeTile } from './player';
@@ -16,6 +16,10 @@ import {
 	generateLegalMoves,
 	isValidMove
 } from './moves';
+import { scoreEmptyHand, scoreBlockedGame, calculateHandScore } from './scoring';
+import { assignTeams } from './teams';
+
+export { calculateHandScore };
 
 function createDeck(): Domino[] {
 	const deck: Domino[] = [];
@@ -27,24 +31,16 @@ function createDeck(): Domino[] {
 	return deck;
 }
 
-function createPlayers(names: string[]): Player[] {
-	return names.map((name, index) => createPlayer(index.toString(), name));
-}
-
-export function calculateHandScore(player: Player): number {
-	return player.hand.reduce((total, tile) => total + tile.left + tile.right, 0);
+function createPlayers(names: string[], teamConfig?: TeamConfig): Player[] {
+	const players = names.map((name, index) => createPlayer(index.toString(), name));
+	if (teamConfig?.mode === 'teams' && teamConfig.layout) {
+		return assignTeams(players, teamConfig.layout);
+	}
+	return players;
 }
 
 function createScores(players: Player[]): Record<string, number> {
 	return Object.fromEntries(players.map((player) => [player.id, calculateHandScore(player)]));
-}
-
-function getLowestScoreWinner(players: Player[]): Player {
-	return [...players].sort((a, b) => {
-		const scoreDiff = calculateHandScore(a) - calculateHandScore(b);
-		if (scoreDiff !== 0) return scoreDiff;
-		return a.hand.length - b.hand.length;
-	})[0];
 }
 
 function findStarterPlayer(players: Player[]): number {
@@ -54,17 +50,17 @@ function findStarterPlayer(players: Player[]): number {
 	return doubleThree >= 0 ? doubleThree : 0;
 }
 
-// PERBAIKAN 1: Tambahkan parameter `prevStandings` agar skor ronde lalu tidak hangus
 export function createGameState(
 	playerNames: string[],
 	seed: string,
 	startingPlayerId?: string,
 	requiresStarterTile = true,
-	prevStandings: Record<string, number> = {}
+	prevStandings: Record<string, number> = {},
+	teamConfig?: TeamConfig
 ): GameState {
 	const rng = createSeededRng(seed);
 	const deck = shuffle(createDeck(), rng);
-	const players = createPlayers(playerNames);
+	const players = createPlayers(playerNames, teamConfig);
 
 	let remainingDeck = [...deck];
 	for (let i = 0; i < players.length; i++) {
@@ -86,25 +82,26 @@ export function createGameState(
 		drawPile: remainingDeck,
 		seed,
 		result: null,
-		// PERBAIKAN 2: Inisialisasi memori untuk aturan Gaple Tradisional
 		pointStandings: prevStandings,
 		lastPlayedTile: null,
 		lastPlayerId: null,
-		lastMoveWasCekik: false
+		lastMoveWasCekik: false,
+		teamConfig
 	};
-}
-
-export class GameManager {
+}	export class GameManager {
 	public state: GameState;
+	private teamConfig?: TeamConfig;
 
 	constructor(
 		playerNames: string[],
-		public seed = 'seed'
+		public seed = 'seed',
+		teamConfig?: TeamConfig
 	) {
 		if (playerNames.length !== 4) {
 			throw new Error('Game requires exactly 4 players');
 		}
-		this.state = createGameState(playerNames, seed);
+		this.teamConfig = teamConfig;
+		this.state = createGameState(playerNames, seed, undefined, true, {}, teamConfig);
 	}
 
 	get players() {
@@ -130,7 +127,6 @@ export class GameManager {
 	}
 
 	startGame(previousWinnerId?: string) {
-		// PERBAIKAN 3: Amankan rekam jejak poin sebelum reset ronde
 		const prevStandings = this.state?.pointStandings || {};
 
 		this.seed = Math.random().toString(36).substring(2, 10);
@@ -140,7 +136,8 @@ export class GameManager {
 			this.seed,
 			previousWinnerId,
 			requiresStarterTile,
-			prevStandings
+			prevStandings,
+			this.teamConfig
 		);
 	}
 
@@ -161,7 +158,6 @@ export class GameManager {
 	private applyMove(move: Move): boolean {
 		const currentPlayer = this.players[this.state.turnIndex];
 
-		// PERBAIKAN 4: Deteksi apakah langkah ini Cecek (bisa masuk di kedua ujung)
 		const legalMoves = generateLegalMoves(this.state, currentPlayer.id);
 		const isCecek = legalMoves.filter((m) => m.tileId === move.tileId).length === 2;
 
@@ -176,31 +172,22 @@ export class GameManager {
 
 		const isFinished = result.hand.length === 0;
 
-		// Clone pointStandings agar tidak mutasi state secara kotor
 		const newStandings = { ...this.state.pointStandings };
 		let gameResult: GameResult | null = null;
 
-		// PERBAIKAN 5: Kalkulasi Poin Menang Normal
 		if (isFinished) {
-			let pts = 1;
-			let type = 'Normal';
+			// Gunakan scoring module untuk menghitung skor
+			const score = scoreEmptyHand(currentPlayer.id, result.tile, isCecek ? 2 : 1);
 
-			if (result.tile.left === result.tile.right) {
-				pts = 4;
-				type = 'Palang (Balak)';
-			} else if (isCecek) {
-				pts = 3;
-				type = 'Cium Kiri-Kanan (Cecek)';
-			}
-
-			newStandings[currentPlayer.id] = (newStandings[currentPlayer.id] || 0) + pts;
+			newStandings[currentPlayer.id] = (newStandings[currentPlayer.id] || 0) + score.points;
 
 			gameResult = {
-				winnerId: currentPlayer.id,
-				reason: 'empty-hand',
+				winnerId: score.winnerId,
+				winnerTeamId: newPlayers.find((p) => p.id === score.winnerId)?.teamId,
+				reason: score.reason,
 				scores: createScores(newPlayers),
-				points: pts,
-				winType: type
+				points: score.points,
+				winType: score.winType
 			};
 		}
 
@@ -242,7 +229,7 @@ export class GameManager {
 
 		const newStandings = { ...this.state.pointStandings };
 
-		// PERBAIKAN 6: Aturan Cekik (Tambahkan 1 poin ke pemain yang membuat Pass)
+		// Cekik: tambahkan 1 poin ke pemain yang membuat lawan pass
 		if (this.state.lastPlayerId) {
 			newStandings[this.state.lastPlayerId] = (newStandings[this.state.lastPlayerId] || 0) + 1;
 		}
@@ -250,7 +237,7 @@ export class GameManager {
 		const nextTurnIndex = (this.state.turnIndex + 1) % this.players.length;
 		const stateAfterPass: GameState = {
 			...this.state,
-			pointStandings: newStandings, // Simpan poin cekik
+			pointStandings: newStandings,
 			events: [...this.state.events, createPassEvent(playerId)],
 			turnIndex: nextTurnIndex
 		};
@@ -259,27 +246,20 @@ export class GameManager {
 			(player) => generateLegalMoves(stateAfterPass, player.id).length === 0
 		);
 
-		// PERBAIKAN 7: Kalkulasi Poin Buntu / Gaple
 		if (isBlocked) {
-			const winner = getLowestScoreWinner(stateAfterPass.players);
-			let pts = 1;
-			let type = 'Buntu (Mutlak)';
+			// Gunakan scoring module untuk gaple/blocked
+			const score = scoreBlockedGame(stateAfterPass.players, stateAfterPass.lastPlayerId);
 
-			// Aturan Tembak (Yang menang BUKAN yang menutup meja)
-			if (winner.id !== stateAfterPass.lastPlayerId) {
-				pts = 2;
-				type = 'Buntu (Kena Tembak)';
-			}
-
-			stateAfterPass.pointStandings[winner.id] =
-				(stateAfterPass.pointStandings[winner.id] || 0) + pts;
+			stateAfterPass.pointStandings[score.winnerId] =
+				(stateAfterPass.pointStandings[score.winnerId] || 0) + score.points;
 
 			const gameResult: GameResult = {
-				winnerId: winner.id,
-				reason: 'blocked',
+				winnerId: score.winnerId,
+				winnerTeamId: stateAfterPass.players.find((p) => p.id === score.winnerId)?.teamId,
+				reason: score.reason,
 				scores: createScores(stateAfterPass.players),
-				points: pts,
-				winType: type
+				points: score.points,
+				winType: score.winType
 			};
 
 			this.state = {

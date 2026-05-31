@@ -10,6 +10,8 @@ function tile(index: number): Domino {
 	};
 }
 
+const previewTile: Domino = { id: 'preview', left: 3, right: 4 };
+
 describe('Board layout', () => {
 	it('snakes the right arm in a smoother zig-zag', () => {
 		expect.assertions(6);
@@ -20,10 +22,10 @@ describe('Board layout', () => {
 
 		expect(layout[1]).toMatchObject({ x: 112, y: 0, rotation: 0 });
 		expect(layout[3]).toMatchObject({ x: 336, y: 0, rotation: 0 });
-		expect(layout[4]).toMatchObject({ x: 336, y: 56, rotation: 180 });
-		expect(layout[5]).toMatchObject({ x: 224, y: 56, rotation: 180 });
-		expect(layout[6]).toMatchObject({ x: 112, y: 56, rotation: 180 });
-		expect(Math.max(...layout.map((item) => item.x))).toBe(336);
+		expect(layout[4]).toMatchObject({ x: 364, y: 84, rotation: 90 });
+		expect(layout[5]).toMatchObject({ x: 280, y: 112, rotation: 180 });
+		expect(layout[6]).toMatchObject({ x: 168, y: 112, rotation: 180 });
+		expect(Math.max(...layout.map((item) => item.x))).toBe(364);
 	});
 
 	it('mirrors the snake path for the left arm', () => {
@@ -33,28 +35,32 @@ describe('Board layout', () => {
 			7
 		);
 
-		expect(layout[6]).toMatchObject({ x: -112, rotation: 0 });
-		expect(layout[4]).toMatchObject({ x: -336, rotation: 0 });
-		expect(layout[3]).toMatchObject({ x: -336, y: -56, rotation: 180 });
-		expect(layout[2]).toMatchObject({ x: -224, y: -56, rotation: 180 });
-		expect(layout[1]).toMatchObject({ x: -112, y: -56, rotation: 180 });
-		expect(Math.min(...layout.map((item) => item.x))).toBe(-336);
+		expect(layout[6]).toMatchObject({ x: -112, y: 0, rotation: 0 });
+		expect(layout[4]).toMatchObject({ x: -336, y: 0, rotation: 0 });
+		expect(layout[3]).toMatchObject({ x: -364, y: -84, rotation: 90 });
+		expect(layout[2]).toMatchObject({ x: -280, y: -112, rotation: 180 });
+		expect(layout[1]).toMatchObject({ x: -168, y: -112, rotation: 180 });
+		expect(Math.min(...layout.map((item) => item.x))).toBe(-364);
 	});
 
 	it('places the ghost preview at the next snake slot', () => {
 		expect.assertions(2);
 		const tiles = Array.from({ length: 4 }, (_, index) => tile(index));
 
-		expect(calculateBoardPreviewPosition(tiles, 0, 'right')).toMatchObject({
-			x: 336,
-			y: 56,
-			rotation: 180,
+		expect(
+			calculateBoardPreviewPosition(tiles, 0, 'right', previewTile, 112, 56, 0)
+		).toMatchObject({
+			x: 364,
+			y: 84,
+			rotation: 90,
 			side: 'right'
 		});
-		expect(calculateBoardPreviewPosition(tiles, 3, 'left')).toMatchObject({
-			x: -336,
-			y: -56,
-			rotation: 180,
+		expect(
+			calculateBoardPreviewPosition(tiles, 3, 'left', previewTile, 112, 56, 0)
+		).toMatchObject({
+			x: -364,
+			y: -84,
+			rotation: 90,
 			side: 'left'
 		});
 	});

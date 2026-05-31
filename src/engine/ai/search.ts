@@ -1,9 +1,10 @@
-import type { GameState, Move } from '../types';
+import type { GameState, Move, TeamId } from '../types';
 import { GameManager } from '../game';
 import { generateLegalMoves } from '../moves';
 import { createSeededRng } from '../utils';
 import { playout } from './playout';
 import { createTranspositionTable, hashGameState } from './cache';
+import { evaluateGameResult, calculateRoundScore } from '../scoring';
 
 export interface MctsOptions {
 	iterations?: number;
@@ -49,7 +50,8 @@ function rolloutValue(
 	playerId: string,
 	maxPlayoutTurns: number,
 	rng: ReturnType<typeof createSeededRng>,
-	cache = createTranspositionTable()
+	cache = createTranspositionTable(),
+	teamId?: TeamId
 ): number {
 	const key = hashGameState(state);
 	const cached = cache.get(key);
@@ -75,7 +77,7 @@ function rolloutValue(
 		}
 	}
 
-	const value = playout(simManager.state, playerId, rng, maxPlayoutTurns);
+	const value = playout(simManager.state, playerId, rng, maxPlayoutTurns, teamId);
 	cache.set(key, { value, visits: 1, updatedAt: Date.now() });
 	return value;
 }
@@ -118,6 +120,10 @@ export function runMctsSearch(
 	const transpositionTable = createTranspositionTable();
 	const root = createNode(state, null, null);
 
+	// Determine team ID for scoring-aware evaluation
+	const aiPlayer = state.players.find((p) => p.id === playerId);
+	const teamId = aiPlayer?.teamId;
+
 	for (let index = 0; index < iterations; index++) {
 		let node = root;
 
@@ -136,10 +142,15 @@ export function runMctsSearch(
 			node = child;
 		}
 
-		const reward = rolloutValue(node.state, playerId, maxPlayoutTurns, rng, transpositionTable);
+		// Use scoring-aware rollout: higher rewards for balak/cecek finishes
+		const reward = rolloutValue(node.state, playerId, maxPlayoutTurns, rng, transpositionTable, teamId);
+
+		// Scoring-aware backpropagation
 		let current: MctsNode | null = node;
 		while (current) {
 			current.visits += 1;
+			// For scoring-aware MCTS, the reward reflects Gaple scoring value
+			// (1000+ for wins, scaled by points like balak=4, cecek=3, normal=1)
 			current.totalValue += reward;
 			current = current.parent;
 		}
@@ -150,12 +161,12 @@ export function runMctsSearch(
 		return null;
 	}
 
+	// Select best move by average score (scoring-aware)
 	const bestChild = root.children.reduce(
 		(best, child) => {
-			if (child.visits > best.visits) {
-				return child;
-			}
-			return best;
+			const avgScore = child.visits > 0 ? child.totalValue / child.visits : -Infinity;
+			const bestAvg = best.visits > 0 ? best.totalValue / best.visits : -Infinity;
+			return avgScore > bestAvg ? child : best;
 		},
 		root.children[0] ?? createNode(state, null, legalMoves[0])
 	);

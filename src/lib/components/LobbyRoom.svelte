@@ -24,21 +24,49 @@
 	let joinCodeInput = $state('');
 	let roomCreated = $state(false);
 
-	// Determine the PartyKit host
+	// PartyKit project name (from partykit.json)
+	const PARTYKIT_PROJECT = 'gaple-party';
+
+	/**
+	 * Resolve the PartyKit host to connect to.
+	 *
+	 * IMPORTANT: In production, PUBLIC_PARTYKIT_HOST must be set at BUILD TIME
+	 * because Vite statically replaces `import.meta.env.PUBLIC_*` variables
+	 * during `npm run build`. Setting it in the runtime environment won't work.
+	 *
+	 * Build command example:
+	 *   PUBLIC_PARTYKIT_HOST=gaple-party.USERNAME.partykit.dev npm run build
+	 */
 	function resolvePartyKitHost(): string {
 		if (typeof window === 'undefined') return 'localhost:1999';
-		// Production: use env var or default to partykit.dev
+
+		// Production: use env var (must be set at build time!)
 		if (import.meta.env.PUBLIC_PARTYKIT_HOST) {
 			return import.meta.env.PUBLIC_PARTYKIT_HOST;
 		}
+
 		const hostname = window.location.hostname;
+
+		// GitHub Codespaces
 		if (hostname.endsWith('.app.github.dev')) {
 			const base = hostname.replace(/-?\d+\.app\.github\.dev$/, '');
 			return `${base}-1999.app.github.dev`;
 		}
-		if (hostname === 'localhost' || hostname === '127.0.0.1') return 'localhost:1999';
-		// Fallback: assume PartyKit is on same hostname port 1999 (dev only)
-		return `${hostname}:1999`;
+
+		// Local development
+		if (hostname === 'localhost' || hostname === '127.0.0.1') {
+			return 'localhost:1999';
+		}
+
+		// Production fallback — PUBLIC_PARTYKIT_HOST was NOT set at build time.
+		// The old fallback `${hostname}:1999` is wrong for production.
+		console.error(
+			`[PartyKit] PUBLIC_PARTYKIT_HOST is not configured. ` +
+			`Set it at build time, e.g.: PUBLIC_PARTYKIT_HOST=${PARTYKIT_PROJECT}.<your-account>.partykit.dev npm run build`
+		);
+		// Return empty — PartySocket will default to the current page host,
+		// which will fail, but at least it won't incorrectly try port 1999.
+		return '';
 	}
 
 	const host = $derived(resolvePartyKitHost());

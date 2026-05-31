@@ -11,7 +11,7 @@ type ServerMessage =
 	| { type: 'PLAYER_LEFT'; playerId: string }
 	| { type: 'PLAYER_READY'; playerId: string }
 	| { type: 'ALL_READY' }
-	| { type: 'GAME_START'; seed: string; state: GameState; currentRound: number }
+	| { type: 'GAME_START'; seed: string; state: GameState; currentRound: number; seatAssignment: Record<string, number> }
 	| { type: 'MOVE_ACCEPTED'; state: GameState }
 	| { type: 'GAME_OVER'; state: GameState }
 	| { type: 'ERROR'; message: string }
@@ -53,12 +53,92 @@ export default class GapleRoom implements Server {
 	private gameRounds = 3;
 	private currentRound = 0;
 	private botTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
+	private storageLoaded = false;
 
 	constructor(readonly room: import('partykit/server').Room) {}
+
+	// ── Storage Persistence ─────────────────────────────────────────
+
+	/**
+	 * Load room + game state from PartyKit persistent storage (only once).
+	 * Called on the first connection after room instantiation.
+	 */
+	private async loadFromStorage() {
+		if (this.storageLoaded) return;
+		this.storageLoaded = true;
+
+		try {
+			const [room, players, gameState] = await Promise.all([
+				this.room.storage.get<any>('room'),
+				this.room.storage.get<any[]>('players'),
+				this.room.storage.get<any>('game')
+			]);
+
+			if (room) {
+				this.gameMode = room.mode || 'ffa';
+				this.gameRounds = room.rounds || 3;
+				this.currentRound = room.currentRound || 0;
+			}
+
+			if (players) {
+				this.players = [];
+				for (let i = 0; i < 4; i++) {
+					this.players[i] = players[i] || (undefined as unknown as PlayerInfo);
+				}
+			}
+
+			if (gameState) {
+				const playerNames = gameState.players.map((p: any) => p.name);
+				const teamConfig: TeamConfig | undefined =
+					this.gameMode === 'coop-vs-ai' || this.gameMode === 'coop-vs-coop'
+						? { mode: 'teams', layout: SEATS_TEAMS }
+						: undefined;
+				const gm = new GameManager(playerNames, gameState.seed || 'seed', teamConfig);
+				gm.state = gameState;
+				this.game = gm;
+			}
+		} catch (e) {
+			console.error('[GapleRoom] loadFromStorage failed:', e);
+		}
+	}
+
+	/** Persist room metadata (mode, rounds, currentRound). */
+	private async saveRoom() {
+		try {
+			await this.room.storage.put('room', {
+				mode: this.gameMode,
+				rounds: this.gameRounds,
+				currentRound: this.currentRound
+			});
+			await this.room.storage.put('players', this.players);
+		} catch (e) {
+			console.error('[GapleRoom] saveRoom failed:', e);
+		}
+	}
+
+	/** Persist the full game state (board, hands, scores, etc.). */
+	private async saveGame() {
+		try {
+			if (this.game) {
+				await this.room.storage.put('game', this.game.state);
+			}
+		} catch (e) {
+			console.error('[GapleRoom] saveGame failed:', e);
+		}
+	}
+
+	/** Fire-and-forget persist both room and game state. */
+	private persist() {
+		this.saveRoom();
+		this.saveGame();
+	}
 
 	// ── Connection Lifecycle ─────────────────────────────────────────
 
 	async onConnect(connection: Connection, ctx: ConnectionContext) {
+		// Restore persisted state (only runs once per room lifetime)
+		await this.loadFromStorage();
+
 		const url = new URL(ctx.request.url);
 		const name = url.searchParams.get('name') || `Player-${connection.id.slice(0, 4)}`;
 		const modeParam = url.searchParams.get('mode') || '';
@@ -69,6 +149,48 @@ export default class GapleRoom implements Server {
 			this.gameMode = modeParam;
 			this.gameRounds = parseInt(roundsParam, 10) || 3;
 		}
+
+		// ── Reconnection: player rejoining mid-game ───────────────
+		if (this.game) {
+			const existingIndex = this.players.findIndex(
+				(p) => p && p.name === name && !p.connected
+			);
+			if (existingIndex >= 0) {
+				this.players[existingIndex].id = connection.id;
+				this.players[existingIndex].connected = true;
+				connection.setState({ seatIndex: existingIndex, playerId: connection.id });
+
+				// Fill bot seats if needed (coop-vs-ai)
+				if (this.gameMode === 'coop-vs-ai') {
+					this.fillBotSeats();
+				}
+
+				const seatAssignment: Record<string, number> = {};
+				for (let i = 0; i < this.players.length; i++) {
+					const p = this.players[i];
+					if (p) seatAssignment[p.id] = i;
+				}
+
+				connection.send(
+					JSON.stringify({
+						type: 'GAME_START',
+						seed: this.game.seed,
+						state: this.game.state,
+						currentRound: this.currentRound,
+						seatAssignment
+					} satisfies ServerMessage)
+				);
+
+				this.broadcast({
+					type: 'PLAYER_JOINED',
+					player: { ...this.players[existingIndex], id: connection.id }
+				});
+				this.broadcastRoomState();
+				return;
+			}
+		}
+
+		// ── New connection ────────────────────────────────────────
 
 		// Assign seat based on mode
 		const seatIndex = this.findAvailableSeat();
@@ -107,12 +229,17 @@ export default class GapleRoom implements Server {
 	async onClose(connection: Connection) {
 		const state = connection.state as { seatIndex?: number } | null;
 		if (state?.seatIndex !== undefined && this.players[state.seatIndex]) {
-			this.players[state.seatIndex] = undefined!;
+			if (this.game) {
+				// Game in progress — keep slot, just mark disconnected (allows reconnect)
+				this.players[state.seatIndex].connected = false;
+			} else {
+				// Lobby — remove player entirely
+				this.players[state.seatIndex] = undefined as unknown as PlayerInfo;
 
-			// Don't compact the array — preserve seat indices
-			// But clean up trailing undefineds (not middle ones)
-			while (this.players.length > 0 && !this.players[this.players.length - 1]) {
-				this.players.pop();
+				// Clean up trailing undefineds (not middle ones)
+				while (this.players.length > 0 && !this.players[this.players.length - 1]) {
+					this.players.pop();
+				}
 			}
 
 			// For coop-vs-ai: re-fill bot seats if game hasn't started
@@ -239,13 +366,21 @@ export default class GapleRoom implements Server {
 		this.game.startGame();
 		this.currentRound = 1;
 
+		// Build seat assignment: connectionId → game state player index
+		const seatAssignment: Record<string, number> = {};
+		for (let i = 0; i < this.players.length; i++) {
+			const p = this.players[i];
+			if (p) seatAssignment[p.id] = i;
+		}
+
 		// Broadcast initial state
-			this.broadcast({
-				type: 'GAME_START',
-				seed,
-				state: this.game.state,
-				currentRound: this.currentRound
-			});
+		this.broadcast({
+			type: 'GAME_START',
+			seed,
+			state: this.game.state,
+			currentRound: this.currentRound,
+			seatAssignment
+		});
 
 		// Run bot turns if applicable (coop-vs-ai: AIs are at seats 1 and 3)
 		if (this.gameMode === 'coop-vs-ai' || this.gameMode === 'ffa') {
@@ -419,6 +554,8 @@ export default class GapleRoom implements Server {
 		this.botTimeouts.clear();
 
 		const previousWinnerId = this.game.state.result?.winnerId;
+		// Preserve cumulative scores across rounds
+		const prevStandings = { ...this.game.state.pointStandings };
 		const playerNames = this.players.map((p) => p.name);
 		const teamConfig: TeamConfig | undefined =
 			this.gameMode === 'coop-vs-ai' || this.gameMode === 'coop-vs-coop'
@@ -428,12 +565,22 @@ export default class GapleRoom implements Server {
 		this.game = new GameManager(playerNames, undefined, teamConfig);
 		this.currentRound++;
 		this.game.startGame(previousWinnerId);
+		// Restore cumulative pointStandings (startGame resets them from the fresh state)
+		this.game.state = { ...this.game.state, pointStandings: prevStandings };
+
+		// Build seat assignment for the new round
+		const seatAssignment: Record<string, number> = {};
+		for (let i = 0; i < this.players.length; i++) {
+			const p = this.players[i];
+			if (p) seatAssignment[p.id] = i;
+		}
 
 		this.broadcast({
 			type: 'GAME_START',
 			seed: this.game.state.seed,
 			state: this.game.state,
-			currentRound: this.currentRound
+			currentRound: this.currentRound,
+			seatAssignment
 		});
 
 		// Run bot turns if applicable
@@ -471,6 +618,7 @@ export default class GapleRoom implements Server {
 
 	private broadcast(msg: ServerMessage) {
 		this.room.broadcast(JSON.stringify(msg));
+		this.persist(); // Persist state after every broadcast
 	}
 
 	private sendTo(connection: Connection, msg: ServerMessage) {

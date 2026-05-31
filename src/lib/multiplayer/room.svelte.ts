@@ -190,10 +190,16 @@ function handleServerMessage(msg: ServerMessage) {
 		case 'GAME_START': {
 			gameState = msg.state;
 			// Store currentRound from server
-			if ('currentRound' in msg) multiplayerCurrentRound = (msg as any).currentRound;
-			// Find my player index by matching name
-			const myIdx = msg.state.players.findIndex((p: any) => p.name === myName);
-			if (myIdx >= 0) myPlayerIndex = myIdx;
+			multiplayerCurrentRound = msg.currentRound;
+			// Find my player index by connection ID via seatAssignment (robust against duplicate names)
+			const assignedIdx = msg.seatAssignment?.[myPlayerId];
+			if (assignedIdx !== undefined) {
+				myPlayerIndex = assignedIdx;
+			} else {
+				// Fallback: match by name (legacy)
+				const myIdx = msg.state.players.findIndex((p: any) => p.name === myName);
+				if (myIdx >= 0) myPlayerIndex = myIdx;
+			}
 			break;
 		}
 		case 'MOVE_ACCEPTED': {

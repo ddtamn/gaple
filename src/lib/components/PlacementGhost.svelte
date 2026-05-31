@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import DominoTile from './DominoTile.svelte';
 
 	interface Props {
@@ -19,6 +20,23 @@
 
 	const isVertical = $derived(tile.rotation % 180 !== 0);
 	const cssRotation = $derived(isVertical ? tile.rotation - 90 : tile.rotation);
+
+	const isHovered = $derived(dropZoneHovered === tile.side);
+
+	let animIn = $state(false);
+
+	onMount(() => {
+		// Trigger appear animation after mount
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				animIn = true;
+			});
+		});
+	});
+
+	function handleHover(side: 'left' | 'right' | null) {
+		onhover(side);
+	}
 </script>
 
 <div
@@ -26,17 +44,29 @@
 	style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
 >
 	<button
-		class="cursor-copy rounded-lg border-2 border-dashed border-primary/40 bg-primary/10 p-2
-        opacity-70 transition hover:bg-primary/20 hover:opacity-95
-        {dropZoneHovered === tile.side ? 'scale-105 opacity-95' : ''}"
-		onmouseenter={() => onhover(tile.side)}
-		onmouseleave={() => onhover(null)}
+		data-ghost-side={tile.side}		class="cursor-copy rounded-lg border-2 border-dashed p-2
+			transition-all duration-200
+			border-stone-500/40 bg-stone-500/10
+			{isHovered
+				? 'scale-110 border-primary/70 bg-primary/20 shadow-lg shadow-primary/20'
+				: animIn
+					? 'opacity-70'
+					: 'scale-75 opacity-0'}"
+		onmouseenter={() => handleHover(tile.side)}
+		onmouseleave={() => handleHover(null)}
 		onmousedown={(e) => e.preventDefault()}
 		onmouseup={(e) => {
 			e.stopPropagation();
 			onplace(tile.side);
 		}}
 		onclick={(e) => {
+			e.stopPropagation();
+			onplace(tile.side);
+		}}
+		onpointerenter={() => handleHover(tile.side)}
+		onpointerleave={() => handleHover(null)}
+		onpointerdown={(e) => e.preventDefault()}
+		onpointerup={(e) => {
 			e.stopPropagation();
 			onplace(tile.side);
 		}}

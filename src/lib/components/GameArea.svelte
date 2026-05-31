@@ -6,6 +6,10 @@
 	import { generateLegalMoves } from '../../engine/moves';
 	import type { Domino, TeamConfig, TilePosition } from '../../engine/types';
 
+	import { onDestroy } from 'svelte';
+	import { fade } from 'svelte/transition';
+	import { createWebHaptics } from 'web-haptics/svelte';
+
 	import DominoTile from './DominoTile.svelte';
 	import PlacementGhost from './PlacementGhost.svelte';
 	import BotAvatar from './BotAvatar.svelte';
@@ -94,8 +98,9 @@
 
 	// STATE UNTUK RONDE (from server for multiplayer, local for vs-ai)
 	let currentRound = $state(1);
-	// In multiplayer, round counter comes from server
+	// In multiplayer, round counter and total rounds come from server
 	const mpCurrentRound = $derived(isMultiplayer ? (mp?.currentRound ?? 1) : currentRound);
+	const effectiveRounds = $derived(isMultiplayer ? (mp?.roomRounds ?? rounds) : rounds);
 
 	function syncStarterMarker() {
 		if (!game || !game.state) return;
@@ -117,7 +122,50 @@
 		game.setBotPlayers(['1', '2', '3']);
 	}
 
-	// ── Team Scores (Coop Mode) ──────────────────────────────────────
+	// ── Haptic Feedback ──────────────────────────────────────────────────────
+	const { trigger: hapticTrigger, destroy: hapticDestroy } = createWebHaptics();
+
+	onDestroy(() => {
+		hapticDestroy();
+	});
+
+	// ── Auto-advance countdown ────────────────────────────────────────
+	let countdown = $state(0);
+
+	$effect(() => {
+		const hasResult = !!currentGameState?.result;
+
+		// No countdown for match-over (user clicks a button instead)
+		if (!hasResult || isMatchOver) {
+			countdown = 0;
+			return;
+		}
+
+		// Round just finished — start auto-advance countdown for next round
+		countdown = 10;
+
+		const interval = setInterval(() => {
+			countdown--;
+			if (countdown <= 0) {
+				clearInterval(interval);
+				nextRound();
+			}
+		}, 1000);
+
+		return () => clearInterval(interval);
+	});
+
+	function handleReplay() {
+		if (isMultiplayer) {
+			onExit();
+		} else {
+			// Reset local game: clear game so $effect re-initializes it
+			game = null;
+			currentRound = 1;
+		}
+	}
+
+// ── Team Scores (Coop Mode) ──────────────────────────────────────
 	const teamScores = $derived.by(() => {
 		if (!currentGameState || !isCoopMode) return null;
 		const scores: Record<string, number> = {};
@@ -135,6 +183,8 @@
 	let mouseX = $state(0);
 	let mouseY = $state(0);
 	let dropZoneHovered = $state<'left' | 'right' | 'center' | null>(null);
+	// Separate tracker for haptic — not overwritten by pointerenter (which fires before touchmove)
+	let _lastHoveredGhost: 'left' | 'right' | null = null;
 
 	const activeTile = $derived(draggedTile ?? selectedTile);
 	const isDragging = $derived(draggedTile !== null);
@@ -162,7 +212,7 @@
 	// Mengecek apakah pertandingan (seluruh ronde) sudah selesai
 	const effectiveRound = $derived(mpCurrentRound);
 	const isMatchOver = $derived(
-		currentGameState?.result && rounds !== 'custom' && effectiveRound >= (rounds as number)
+		currentGameState?.result && effectiveRounds !== 'custom' && effectiveRound >= (effectiveRounds as number)
 	);
 
 	// Mengurutkan klasemen skor untuk akhir pertandingan
@@ -175,23 +225,89 @@
 		return standings.sort((a, b) => b.points - a.points);
 	});
 
+	function getEventPos(e: MouseEvent | TouchEvent) {
+		if ('touches' in e && e.touches.length > 0) {
+			return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+		}
+		if ('changedTouches' in e && e.changedTouches.length > 0) {
+			return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+		}
+		return { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY };
+	}
+
+	function getGhostSideFromPoint(x: number, y: number): 'left' | 'right' | null {
+		const el = document.elementFromPoint(x, y);
+		const ghostBtn = el?.closest('[data-ghost-side]');
+		if (ghostBtn) {
+			return ghostBtn.getAttribute('data-ghost-side') as 'left' | 'right';
+		}
+		return null;
+	}
+
 	function onWindowMouseMove(e: MouseEvent) {
 		mouseX = e.clientX;
 		mouseY = e.clientY;
+
+		// Sync haptic in user-gesture context (mouse drag over ghost)
+		if (draggedTile) {
+			const side = getGhostSideFromPoint(e.clientX, e.clientY);
+			if (side && side !== _lastHoveredGhost) {
+				hapticTrigger('selection');
+				_lastHoveredGhost = side;
+			} else if (!side) {
+				_lastHoveredGhost = null;
+			}
+		}
 	}
 
 	function onWindowMouseUp() {
 		draggedTile = null;
 		dropZoneHovered = null;
+		_lastHoveredGhost = null;
+	}
+
+	function onWindowTouchMove(e: TouchEvent) {
+		const pos = getEventPos(e);
+		mouseX = pos.x;
+		mouseY = pos.y;
+
+		// Sync haptic in user-gesture context (touch drag over ghost — this is the one that matters)
+		if (draggedTile) {
+			const side = getGhostSideFromPoint(pos.x, pos.y);
+			// Use _lastHoveredGhost (not dropZoneHovered) because pointerenter fires before touchmove
+			// and already sets dropZoneHovered — making the comparison always false.
+			if (side && side !== _lastHoveredGhost) {
+				hapticTrigger('selection');
+				_lastHoveredGhost = side;
+			} else if (!side) {
+				_lastHoveredGhost = null;
+			}
+		}
+	}
+
+	function onWindowTouchEnd(e: TouchEvent) {
+		if (!draggedTile) return;
+		_lastHoveredGhost = null;
+		const pos = getEventPos(e);
+		// Check if the touch ended on a placement ghost
+		const side = getGhostSideFromPoint(pos.x, pos.y);
+		if (side) {
+			placeTile(side);
+		} else {
+			draggedTile = null;
+			dropZoneHovered = null;
+		}
 	}
 
 	function placeTile(side: 'left' | 'right') {
 		if (!activeTile || currentGameState?.result) return;
+		hapticTrigger('medium');
 		if (isMultiplayer && mp) {
 			mp.playTile(activeTile.id, side);
 		} else if (game && currentGameState) {
 			game.nextTurn(currentGameState.players[0].id, activeTile.id, side);
 		}
+		_lastHoveredGhost = null;
 		draggedTile = null;
 		selectedTile = null;
 		dropZoneHovered = null;
@@ -272,12 +388,14 @@
 		return { scale, offsetX: -centerX, offsetY: -centerY };
 	});
 
-	function handleTileDragStart(tile: Domino, e: MouseEvent) {
+	function handleTileDragStart(tile: Domino, e: MouseEvent | TouchEvent) {
 		e.preventDefault();
 		draggedTile = tile;
 		selectedTile = null;
-		mouseX = e.clientX;
-		mouseY = e.clientY;
+		_lastHoveredGhost = null;
+		const pos = getEventPos(e);
+		mouseX = pos.x;
+		mouseY = pos.y;
 	}
 
 	function handleTileClick(tile: Domino, e: MouseEvent) {
@@ -291,11 +409,17 @@
 	}
 </script>
 
-<svelte:window onmousemove={onWindowMouseMove} onmouseup={onWindowMouseUp} />
+<svelte:window
+	onmousemove={onWindowMouseMove}
+	onmouseup={onWindowMouseUp}
+	ontouchmove={onWindowTouchMove}
+	ontouchend={onWindowTouchEnd}
+/>
 
 <!-- Dragged tile follow-mouse overlay -->
 {#if isDragging && draggedTile}
 	<div
+		transition:fade={{ duration: 200 }}
 		class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 scale-110 rotate-3 opacity-80"
 		style="left:{mouseX}px; top:{mouseY}px;"
 	>
@@ -306,26 +430,25 @@
 <!-- ══════════════════ MAIN FLEXBOX LAYOUT ══════════════════ -->
 <div
 	role="presentation"
-	class="flex h-dvh w-full flex-col overflow-hidden bg-[radial-gradient(ellipse_at_50%_40%,rgba(212,163,115,0.12)_0%,transparent_70%)] text-stone-100 select-none"
+	class="flex h-dvh w-full flex-col bg-[radial-gradient(ellipse_at_50%_40%,rgba(212,163,115,0.12)_0%,transparent_70%)] text-stone-100 select-none"
 	onclick={() => (selectedTile = null)}
 >
 	<!-- ── LAYER 1: Game Info Bar ─────────────────────────────── -->
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2  px-3 py-2 md:px-6 md:py-3">
-		<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
-			<span class="font-body text-xs text-stone-500">Mode:</span>
+		<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3">
 			<span class="font-body text-xs font-semibold text-stone-100 uppercase">{mode?.replace(/-/g, ' ')}</span>
 			<span class="text-stone-500">|</span>
 			<span class="font-body text-xs text-stone-500">Ronde</span>
 			<span class="font-body text-xs font-bold text-primary"
-				>{mpCurrentRound} / {rounds === 'custom' ? '∞' : rounds}</span
+				>{mpCurrentRound} / {effectiveRounds === 'custom' ? '∞' : effectiveRounds}</span
 			>
 		</div>
 
 		<!-- Coop team scores -->
 		{#if isCoopMode && teamScores}
-			<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
+			<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3">
 				<span class="font-body text-xs text-stone-500">Score:</span>
-				{#each teamScoreEntries as [teamKey, score], i}
+				{#each teamScoreEntries as [teamKey, score], i(i)}
 					<span class="font-body text-xs font-bold {i === 0 ? 'text-emerald-400' : 'text-red-400'}">
 						{score}
 					</span>
@@ -336,20 +459,7 @@
 			</div>
 		{/if}
 
-		<!-- Status messages -->
-		<!-- <div class="flex items-center gap-2">
-			{#if selectedTile && !currentGameState?.result}
-				<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-primary">
-					Kartu dipilih — klik ← / → untuk menempatkan
-				</p>
-			{/if}
 
-			{#if isMultiplayer && !isMyTurn && !currentGameState?.result}
-				<p class="rounded bg-warm-hover px-3 py-1 font-body text-xs text-amber-400">
-					Menunggu giliran pemain lain...
-				</p>
-			{/if}
-		</div>  -->
 	</div>
 
 	<!-- ── LAYER 2: Round Result / Match Over (inline, no modal) ── -->
@@ -556,16 +666,14 @@
 					{#if showDropZones && leftPreview}
 						<PlacementGhost
 							tile={leftPreview}
-							{dropZoneHovered}
-							onhover={(v) => (dropZoneHovered = v)}
+							{dropZoneHovered}						onhover={(v) => dropZoneHovered = v}
 							onplace={placeTile}
 						/>
 					{/if}
 					{#if showDropZones && rightPreview}
 						<PlacementGhost
 							tile={rightPreview}
-							{dropZoneHovered}
-							onhover={(v) => (dropZoneHovered = v)}
+							{dropZoneHovered}						onhover={(v) => dropZoneHovered = v}
 							onplace={placeTile}
 						/>
 					{/if}
@@ -574,32 +682,47 @@
 		</div>
 	</div>
 
-	<!-- ── LAYER 5: Round Actions (between board and main hand) ── -->
+
+	<!-- ── LAYER 5: Next Round CTA / Match Over Buttons ── -->
 	{#if currentGameState?.result}
-		<div class="shrink-0 border-t border-stone-800 px-4 py-3">
-			<div class="flex justify-center gap-3">
-				<button
-					class="rounded border-[1.5px] border-primary bg-transparent px-5 py-2.5 font-body text-sm font-semibold text-primary transition hover:bg-warm-hover active:scale-[0.98]"
-					onclick={onExit}
-				>
-					Ke Lobi
-				</button>
-				{#if !isMatchOver}
+		{#if isMatchOver}
+			<!-- Match completed — show action buttons without countdown -->
+			<div class="shrink-0 border-t border-stone-800 px-4 py-3">
+				<div class="flex items-center justify-center gap-3">
 					<button
-						class="rounded bg-primary px-5 py-2.5 font-body text-sm font-semibold text-white transition hover:bg-primary-hover active:bg-primary-active active:scale-[0.98]"
+						class="rounded-lg border border-stone-700 bg-surface px-6 py-2.5 font-body text-sm font-semibold text-stone-200 transition hover:bg-warm-hover active:scale-[0.98]"
+						onclick={onExit}
+					>
+						← Kembali ke Lobi
+					</button>
+					<button
+						class="rounded-lg bg-primary px-6 py-2.5 font-body text-sm font-semibold text-white transition hover:bg-primary-hover active:scale-[0.98]"
+						onclick={handleReplay}
+					>
+						🔄 Main Lagi
+					</button>
+				</div>
+			</div>
+		{:else if countdown > 0}
+			<!-- Between rounds — countdown to next round -->
+			<div class="shrink-0 border-t border-stone-800 px-4 py-2.5">
+				<div class="flex items-center justify-center gap-2">
+					<button
+						class="font-body text-sm text-primary underline underline-offset-2 transition hover:text-primary-hover active:text-primary-active"
 						onclick={nextRound}
 					>
-						Lanjut Ronde {mpCurrentRound + 1} ➔
+						Ronde Berikutnya
 					</button>
-				{/if}
+					<span class="font-headline text-sm font-bold text-primary">{countdown}</span>
+				</div>
 			</div>
-		</div>
+		{/if}
 	{/if}
 
 	<!-- ── LAYER 6: Main Player Hand ──────────────────────────── -->
 	<div
 		bind:clientHeight={mainHandHeight}
-		class="shrink-0 border-t border-stone-800 pb-2 pt-1 md:pb-4"
+		class="shrink-0 pb-2 pt-1 md:pb-4"
 	>
 		{#if currentGameState}
 			{@const mainPlayer = p(0)}

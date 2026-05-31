@@ -53,9 +53,9 @@
 		<div class="z-10 flex flex-col items-center gap-8">
 			<div class="text-center">
 				<h1
-					class="bg-gradient-to-br from-primary to-secondary bg-clip-text font-headline text-6xl font-black tracking-tighter text-transparent md:text-8xl"
+					class="bg-gradient-to-br from-primary to-secondary bg-clip-text font-headline text-6xl font-black text-transparent pb-4 md:text-8xl"
 				>
-					DOMI.gg
+					Main Domi
 				</h1>
 			</div>
 

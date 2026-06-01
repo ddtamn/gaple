@@ -3,6 +3,8 @@
 	import DominoTile from './DominoTile.svelte';
 	import type { TileSize } from './DominoTile.svelte';
 
+	import { fade } from 'svelte/transition';
+
 	interface Props {
 		player: { id: string; name: string; hand: Domino[] };
 		isMyTurn: boolean;
@@ -16,6 +18,10 @@
 		tileSize?: TileSize;
 		ondragstart: (tile: Domino, e: MouseEvent) => void;
 		ontileclick: (tile: Domino, e: MouseEvent) => void;
+		/** Timestamp of when this player passed, for animation. 0 = no pass. */
+		passTimestamp?: number;
+		/** Turn countdown remaining seconds. 0 = not this player's turn. */
+		turnCountdown?: number;
 	}
 
 	let {
@@ -30,22 +36,59 @@
 		showCardFaces = true,
 		tileSize = 'sm',
 		ondragstart,
-		ontileclick
+		ontileclick,
+		passTimestamp = 0,
+		turnCountdown = 0
 	}: Props = $props();
 
 	const isHandVertical = true;
 
-	const hiddenTileSize = $derived(
-		tileSize === 'sm' ? 'h-[86px] w-[43px] flex-col' : 'h-28 w-14 flex-col'
-	);
-	const hiddenDotSize = $derived(tileSize === 'sm' ? 'h-[10px] w-[10px]' : 'h-8 w-8');
+	// ── Click-to-reveal hidden cards ───────────────────────────────
+	let revealed = $state(false);
+	let revealTimer: ReturnType<typeof setTimeout> | null = null;
+	const REVEAL_DURATION_MS = 4000;
+
+	const effectiveShowFaces = $derived(showCardFaces || revealed);
+
+	function handleContainerClick(e: Event) {
+		// Only handle if cards are currently hidden and not the main player
+		if (showCardFaces || isMain) return;
+		e.stopPropagation();
+
+		// Clear any existing timer
+		if (revealTimer) clearTimeout(revealTimer);
+
+		revealed = true;
+		revealTimer = setTimeout(() => {
+			revealed = false;
+			revealTimer = null;
+		}, REVEAL_DURATION_MS);
+	}
+
+	// Cleanup on destroy
+	import { onDestroy } from 'svelte';
+	onDestroy(() => {
+		if (revealTimer) clearTimeout(revealTimer);
+	});
+
+	// ── Pass animation ─────────────────────────────────────────────
+	const showPassAnimation = $derived(passTimestamp > 0);
 </script>
 
-<div class="relative flex flex-col items-center justify-center {isMain ? 'origin-bottom scale-[1.3]' : ''}">
+<div
+	class="relative flex flex-col items-center justify-center {isMain ? 'origin-bottom scale-[1.3]' : ''}"
+>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="transition-all duration-150 flex flex-wrap justify-center items-center gap-0.5 px-2"
+		class:cursor-pointer={!showCardFaces && !isMain}
+		class:opacity-75={!effectiveShowFaces}
+		role="button"
+		tabindex={!showCardFaces && !isMain ? 0 : -1}
+		onclick={handleContainerClick}
+		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleContainerClick(e); } }}
 	>
-		{#if showCardFaces}
+		{#if effectiveShowFaces}
 			{#each player.hand as tile (tile.id)}
 				{@const isActive = activeTileId === tile.id}
 				{@const isPlayable = playableTileIds.has(tile.id)}
@@ -73,7 +116,7 @@
 			{/each}
 		{:else}
 			<div class="relative flex items-center gap-px flex-wrap justify-center">
-				{#each { length: player.hand.length } as _, i(i)}
+				{#each { length: player.hand.length } as _, i}
 					<div
 						class="flex overflow-hidden rounded border border-stone-600 bg-stone-800 w-[20px] h-[40px]"
 					>
@@ -86,7 +129,32 @@
 		{/if}
 	</div>
 
- {#if isMain}
+	<!-- Pass animation: below the hand for opponents -->
+	{#if showPassAnimation && !isMain}
+		<div
+			transition:fade={{ duration: 400 }}
+			class="mt-1 animate-bounce rounded-full bg-amber-500/20 px-3 py-0.5 font-body text-xs font-bold text-amber-400"
+		>
+			PASS
+		</div>
+	{/if}
+
+	<!-- Turn countdown timer (only shown when it's this player's turn) -->
+	{#if turnCountdown > 0 && !isMain}
+		<div class="mt-1 flex items-center justify-center gap-1">
+			<div
+				class="flex items-center gap-1 rounded-full border px-2 py-0.5 font-body text-xs font-bold
+				{turnCountdown <= 10
+					? 'border-red-500/40 bg-red-500/15 text-red-400'
+					: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
+			>
+				<span class="text-[10px]">⏱</span>
+				<span>{turnCountdown}s</span>
+			</div>
+		</div>
+	{/if}
+
+	{#if isMain}
 		<div class="hidden w-full origin-bottom scale-[0.8] bg-red-300">
 			<div class="relative flex w-fit items-center gap-2">
 				{#if !isMarked}

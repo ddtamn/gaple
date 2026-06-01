@@ -88,7 +88,9 @@ export function createGameState(
 		lastMoveWasCekik: false,
 		teamConfig
 	};
-}	export class GameManager {
+}
+
+export class GameManager {
 	public state: GameState;
 	private teamConfig?: TeamConfig;
 

@@ -12,23 +12,29 @@ function createTeamPlayer(id: string, teamId: 0 | 1, hand: Domino[]): Player {
 
 describe('scoring module', () => {
 	describe('scoreEmptyHand', () => {
-		it('scores normal win as 1 point', () => {
+		it('scores domi win as 1 point', () => {
 			const result = scoreEmptyHand('0', { id: 't', left: 3, right: 5 }, 1);
 			expect(result.points).toBe(1);
-			expect(result.winType).toBe('Normal');
+			expect(result.winType).toBe('Domi');
 			expect(result.reason).toBe('empty-hand');
 		});
 
-		it('scores balak finish as 4 points', () => {
-			const result = scoreEmptyHand('0', { id: 't', left: 6, right: 6 }, 1);
+		it('scores ceki palang as 4 points when balak matches both ends', () => {
+			const result = scoreEmptyHand('0', { id: 't', left: 6, right: 6 }, 2);
 			expect(result.points).toBe(4);
-			expect(result.winType).toContain('Palang');
+			expect(result.winType).toBe('Ceki Palang');
 		});
 
-		it('scores cecek finish as 3 points', () => {
+		it('scores balak that does NOT match both ends as Domi (1 point)', () => {
+			const result = scoreEmptyHand('0', { id: 't', left: 6, right: 6 }, 1);
+			expect(result.points).toBe(1);
+			expect(result.winType).toBe('Domi');
+		});
+
+		it('scores ceki as 3 points for non-balak matching both ends', () => {
 			const result = scoreEmptyHand('0', { id: 't', left: 3, right: 5 }, 2);
 			expect(result.points).toBe(3);
-			expect(result.winType).toContain('Cecek');
+			expect(result.winType).toBe('Ceki');
 		});
 	});
 
@@ -42,9 +48,8 @@ describe('scoring module', () => {
 			];
 			const result = scoreBlockedGame(players, '0');
 			expect(result.winnerId).toBe('0');
-			expect(result.points).toBe(1);
-			expect(result.winType).toContain('Buntu');
-			expect(result.winType).not.toContain('Tembak');
+		expect(result.points).toBe(1);
+		expect(result.winType).toBe('Gab');
 		});
 
 		it('detects "Kena Tembak" when winner is not the last player', () => {
@@ -56,8 +61,8 @@ describe('scoring module', () => {
 			];
 			const result = scoreBlockedGame(players, '3');
 			expect(result.winnerId).toBe('0');
-			expect(result.points).toBe(2);
-			expect(result.winType).toContain('Tembak');
+		expect(result.points).toBe(2);
+		expect(result.winType).toBe('Gab Tangkap');
 		});
 	});
 
@@ -74,7 +79,7 @@ describe('scoring module', () => {
 
 	describe('evaluateScoreForAi', () => {
 		it('returns positive value when AI wins', () => {
-			const score = { winnerId: '0', points: 4, winType: 'Palang (Balak)', reason: 'empty-hand' as const };
+			const score = { winnerId: '0', points: 4, winType: 'Ceki Palang', reason: 'empty-hand' as const };
 			expect(evaluateScoreForAi(score, '0')).toBeGreaterThan(0);
 		});
 

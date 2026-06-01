@@ -1,3 +1,4 @@
+import { generateLegalMoves } from '../engine/moves';
 import { GameManager as PureGameManager } from '../engine/game';
 import type { GameState, Move, TeamConfig } from '../engine/types';
 import AiWorker from './ai.worker?worker';
@@ -68,7 +69,8 @@ export class SvelteGameManager {
 			// PENTING: Kita harus menghilangkan Svelte $state Proxy sebelum mengirimnya ke Worker.
 			// Menggunakan JSON.parse(JSON.stringify) adalah cara teraman menghindari 'DataCloneError'.
 			const pureState = JSON.parse(JSON.stringify(state));
-			this.aiWorker.postMessage({ state: pureState, playerId });
+			// In local vs-ai mode, human is always player '0'
+			this.aiWorker.postMessage({ state: pureState, playerId, humanPlayerIds: ['0'] });
 		});
 	}
 
@@ -95,9 +97,28 @@ export class SvelteGameManager {
 		if (this.engine.state.result) return;
 
 		const currentPlayer = this.engine.currentPlayer;
+		const AI_TIMEOUT_MS = 30_000;
+		let timedOut = false;
+
+		// Set a hard timeout for AI computation
+		const timeoutId = setTimeout(() => {
+			timedOut = true;
+			// Terminate the old worker and create a new one (workers can't be reused after termination)
+			if (this.aiWorker) {
+				this.aiWorker.terminate();
+				this.aiWorker = new AiWorker();
+			}
+			// Play a random valid move as fallback
+			this.playRandomMove(currentPlayer.id);
+		}, AI_TIMEOUT_MS);
+
 		try {
 			// Tunggu Worker selesai berpikir (UI Anda TIDAK akan freeze saat ini terjadi!)
 			const move = await this.getAiMoveFromWorker(this.state, currentPlayer.id);
+			clearTimeout(timeoutId);
+
+			// If timeout already handled the turn, return
+			if (timedOut) return;
 
 			if (move) {
 				let success = this.nextTurn(move.playerId, move.tileId, move.side);
@@ -113,8 +134,33 @@ export class SvelteGameManager {
 				this.passTurn(currentPlayer.id);
 			}
 		} catch (e) {
+			clearTimeout(timeoutId);
+			if (timedOut) return;
 			console.error('AI Worker Error:', e);
 			this.passTurn(currentPlayer.id);
+		}
+	}
+
+	/** Play a random valid move for the given player, or pass if no moves available. */
+	private playRandomMove(playerId: string) {
+		if (this.engine.state.result) return;
+
+		const moves = generateLegalMoves(this.engine.state, playerId);
+
+		if (moves.length > 0) {
+			const move = moves[Math.floor(Math.random() * moves.length)];
+			const success = this.nextTurn(move.playerId, move.tileId, move.side);
+			if (!success) {
+				const otherSide = move.side === 'left' ? 'right' : 'left';
+				const fallbackOk = this.nextTurn(move.playerId, move.tileId, otherSide);
+				if (!fallbackOk) {
+					// Both sides failed — fall back to pass to avoid stuck game
+					console.warn('[AI Timeout] Random move failed both sides, passing.');
+					this.passTurn(playerId);
+				}
+			}
+		} else {
+			this.passTurn(playerId);
 		}
 	}
 

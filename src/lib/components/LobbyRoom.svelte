@@ -54,7 +54,7 @@
 		const hostname = window.location.hostname;
 
 		// GitHub Codespaces — proxy through Vite dev server (same port as app)
-		if (hostname.endsWith('.app.github.dev')) {
+		if (hostname.endsWith('.app.github.dev') || hostname.endsWith('.devtunnels.ms')) {
 			// Vite proxies /parties/* WebSocket connections to PartyKit on :1999
 			return window.location.host;
 		}
@@ -68,8 +68,8 @@
 		// Production fallback — PUBLIC_PARTYKIT_HOST was NOT set.
 		console.error(
 			`[PartyKit] PUBLIC_PARTYKIT_HOST is not configured. ` +
-			`Add it to your Vercel project's environment variables: ` +
-			`PUBLIC_PARTYKIT_HOST=${PARTYKIT_PROJECT}.<your-account>.partykit.dev`
+				`Add it to your Vercel project's environment variables: ` +
+				`PUBLIC_PARTYKIT_HOST=${PARTYKIT_PROJECT}.<your-account>.partykit.dev`
 		);
 		return '';
 	}
@@ -150,44 +150,59 @@
 		<div class="w-full space-y-4">
 			<!-- Player Name -->
 			<div>
-				<label class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">
+				<label
+					class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase"
+				>
 					Your Name
 				</label>
 				<input
 					bind:value={playerName}
 					placeholder="Masukkan namamu..."
-					class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-sm text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
+					class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-sm text-stone-100 transition outline-none placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
 				/>
 			</div>
 
 			{#if isCreate}
 				<div>
-					<label class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">
+					<label
+						class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase"
+					>
 						Room Code (optional)
 					</label>
 					<input
 						bind:value={roomCode}
 						placeholder="Kosongkan untuk random"
-						class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-sm text-stone-100 outline-none uppercase transition placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
+						class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-sm text-stone-100 uppercase transition outline-none placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
 						maxlength={6}
 					/>
 				</div>
 
 				{#if mode === 'coop-vs-ai'}
 					<div class="rounded-lg border border-stone-700 bg-surface/50 p-4">
-						<p class="font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">Informasi Tim</p>
+						<p class="font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">
+							Informasi Tim
+						</p>
 						<div class="mt-2 space-y-1 font-body text-xs text-stone-400">
-							<p>• Kamu akan menjadi <span class="font-bold text-primary">Pemain Bawah</span> (index 0)</p>
-							<p>• Temanmu akan menjadi <span class="font-bold text-secondary">Pemain Atas</span> (index 2)</p>
+							<p>
+								• Kamu akan menjadi <span class="font-bold text-primary">Pemain Bawah</span> (index 0)
+							</p>
+							<p>
+								• Temanmu akan menjadi <span class="font-bold text-secondary">Pemain Atas</span> (index
+								2)
+							</p>
 							<p>• Kartu antar anggota tim bisa saling lihat</p>
 							<p>• Room siap jika ada teman yang bergabung</p>
 						</div>
 					</div>
 				{:else if mode === 'coop-vs-coop'}
 					<div class="rounded-lg border border-stone-700 bg-surface/50 p-4">
-						<p class="font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">Informasi Room</p>
+						<p class="font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">
+							Informasi Room
+						</p>
 						<div class="mt-2 space-y-1 font-body text-xs text-stone-400">
-							<p>• Membutuhkan <span class="font-bold text-secondary">4 pemain</span> untuk mulai</p>
+							<p>
+								• Membutuhkan <span class="font-bold text-secondary">4 pemain</span> untuk mulai
+							</p>
 							<p>• Tim: [0,2] vs [1,3]</p>
 							<p>• Kartu antar anggota tim bisa saling lihat</p>
 						</div>
@@ -202,13 +217,15 @@
 				</button>
 			{:else}
 				<div>
-					<label class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase">
+					<label
+						class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase"
+					>
 						Room Code
 					</label>
 					<input
 						bind:value={joinCodeInput}
 						placeholder="Contoh: X7B9"
-						class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-center text-2xl font-bold tracking-[0.3em] text-stone-100 outline-none uppercase transition placeholder:text-sm placeholder:tracking-normal placeholder:font-normal placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
+						class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 text-center font-body text-2xl font-bold tracking-[0.3em] text-stone-100 uppercase transition outline-none placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
 						maxlength={6}
 					/>
 				</div>
@@ -227,11 +244,18 @@
 	<div class="z-10 flex w-full max-w-lg flex-col items-center gap-6 px-4">
 		<div class="relative w-full text-center">
 			<h2 class="font-headline text-3xl font-semibold text-stone-100">
-				{mp.roomMode === 'coop-vs-ai' ? 'Coop vs AI' : mp.roomMode === 'coop-vs-coop' ? 'Coop vs Coop' : 'Room'} — Waiting
+				{mp.roomMode === 'coop-vs-ai'
+					? 'Coop vs AI'
+					: mp.roomMode === 'coop-vs-coop'
+						? 'Coop vs Coop'
+						: 'Room'} — Waiting
 			</h2>
 			<p class="mt-1 font-body text-sm text-stone-400">
 				Kode Room:
-				<button onclick={copyRoomCode} class="font-mono font-bold text-primary hover:text-primary-hover">
+				<button
+					onclick={copyRoomCode}
+					class="font-mono font-bold text-primary hover:text-primary-hover"
+				>
 					{mp.roomId}
 				</button>
 			</p>
@@ -268,23 +292,33 @@
 							{i + 1}
 						</span>
 						<div>
-							<span class="font-body text-sm font-semibold {player.isBot ? 'text-stone-500' : 'text-stone-100'}">
+							<span
+								class="font-body text-sm font-semibold {player.isBot
+									? 'text-stone-500'
+									: 'text-stone-100'}"
+							>
 								{player.name}
 							</span>
 							<span class="ml-1 font-body text-xs text-stone-600">({seatLabels[i]})</span>
 
 							{#if player.id === mp.hostId}
-								<span class="ml-2 rounded bg-secondary/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-secondary">
+								<span
+									class="ml-2 rounded bg-secondary/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-secondary"
+								>
 									HOST
 								</span>
 							{/if}
 
 							{#if mp.isCoopMode && (i === 0 || i === 2)}
-								<span class="ml-1 rounded bg-emerald-500/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-emerald-400">
+								<span
+									class="ml-1 rounded bg-emerald-500/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-emerald-400"
+								>
 									TIM A
 								</span>
 							{:else if mp.isCoopMode && (i === 1 || i === 3)}
-								<span class="ml-1 rounded bg-red-500/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-red-400">
+								<span
+									class="ml-1 rounded bg-red-500/20 px-1.5 py-0.5 font-body text-[10px] font-bold text-red-400"
+								>
 									TIM B
 								</span>
 							{/if}
@@ -292,15 +326,21 @@
 					</div>
 					<div class="flex items-center gap-2">
 						{#if player.isBot}
-							<span class="rounded bg-stone-700/50 px-2 py-0.5 font-body text-xs font-medium text-stone-500">
+							<span
+								class="rounded bg-stone-700/50 px-2 py-0.5 font-body text-xs font-medium text-stone-500"
+							>
 								AI
 							</span>
 						{:else if player.ready}
-							<span class="rounded bg-emerald-500/20 px-2 py-0.5 font-body text-xs font-medium text-emerald-400">
+							<span
+								class="rounded bg-emerald-500/20 px-2 py-0.5 font-body text-xs font-medium text-emerald-400"
+							>
 								Siap
 							</span>
 						{:else if player.id === mp.myPlayerId}
-							<span class="rounded bg-stone-700 px-2 py-0.5 font-body text-xs font-medium text-stone-400">
+							<span
+								class="rounded bg-stone-700 px-2 py-0.5 font-body text-xs font-medium text-stone-400"
+							>
 								Belum
 							</span>
 						{/if}
@@ -311,11 +351,15 @@
 			<!-- Empty slots (coop-vs-coop mode shows all empty slots) -->
 			{#if mp.roomMode === 'coop-vs-coop'}
 				{#each Array(Math.max(0, 4 - mp.players.length)) as _, i}
-					<div class="flex items-center gap-3 rounded-lg border border-dashed border-stone-700/50 bg-surface/30 px-4 py-3">
-						<span class="flex size-8 items-center justify-center rounded-full bg-stone-800/30 font-body text-sm font-bold text-stone-600">
+					<div
+						class="flex items-center gap-3 rounded-lg border border-dashed border-stone-700/50 bg-surface/30 px-4 py-3"
+					>
+						<span
+							class="flex size-8 items-center justify-center rounded-full bg-stone-800/30 font-body text-sm font-bold text-stone-600"
+						>
 							{mp.players.length + i + 1}
 						</span>
-						<span class="font-body text-sm italic text-stone-600">Menunggu pemain...</span>
+						<span class="font-body text-sm text-stone-600 italic">Menunggu pemain...</span>
 					</div>
 				{/each}
 			{/if}
@@ -363,7 +407,9 @@
 
 		<!-- Error display -->
 		{#if mp.lastError}
-			<div class="w-full rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-center font-body text-sm text-red-400">
+			<div
+				class="w-full rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-center font-body text-sm text-red-400"
+			>
 				{mp.lastError}
 			</div>
 		{/if}

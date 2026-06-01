@@ -1,6 +1,7 @@
 import type { Server, Connection, ConnectionContext } from 'partykit/server';
 import { GameManager } from '../engine/game';
 import { selectAiMove } from '../engine/ai';
+import { generateLegalMoves } from '../engine/moves';
 import type { GameState, Move, TeamConfig, TeamId, GameResult } from '../engine/types';
 
 // ── Message Protocol ──────────────────────────────────────────────────
@@ -255,7 +256,7 @@ export default class GapleRoom implements Server {
 			this.broadcastRoomState();
 		}
 
-		// Cancel bot timeout if game running
+		// Cancel bot timeout and turn timeout if game running
 		if (state?.seatIndex !== undefined && this.game) {
 			const playerId = this.game.state.players[state.seatIndex]?.id;
 			if (playerId) {
@@ -264,6 +265,7 @@ export default class GapleRoom implements Server {
 					clearTimeout(existing);
 					this.botTimeouts.delete(playerId);
 				}
+				this.clearTurnTimeout(playerId);
 			}
 		}
 	}
@@ -478,6 +480,11 @@ export default class GapleRoom implements Server {
 		}
 	}
 
+	// ── Turn Timeout Configuration ──────────────────────────────────
+	// Auto-play a random valid move after this many seconds
+	private readonly HUMAN_TURN_TIMEOUT_MS = 30_000;
+	private turnTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
 	private async handleNextTurn() {
 		if (!this.game || this.game.state.result) return;
 
@@ -497,18 +504,64 @@ export default class GapleRoom implements Server {
 			return;
 		}
 
-		// Only schedule bot turns with delay
-		if (!playerInfo?.isBot) return;
+		// Cancel any existing turn timeout for this player
+		this.clearTurnTimeout(currentPlayer.id);
 
-		const existing = this.botTimeouts.get(currentPlayer.id);
-		if (existing) clearTimeout(existing);
+		if (playerInfo?.isBot) {
+			// Bot turn with delay
+			const delay = 800 + Math.random() * 600;
+			const timeout = setTimeout(() => {
+				this.botTimeouts.delete(currentPlayer.id);
+				this.runBotTurn(currentPlayer.id);
+			}, delay);
+			this.botTimeouts.set(currentPlayer.id, timeout);
+		} else {
+			// Human turn — set auto-play timeout
+			const timeout = setTimeout(() => {
+				this.turnTimeouts.delete(currentPlayer.id);
+				this.autoPlayTurn(currentPlayer.id);
+			}, this.HUMAN_TURN_TIMEOUT_MS);
+			this.turnTimeouts.set(currentPlayer.id, timeout);
+		}
+	}
 
-		const delay = 800 + Math.random() * 600;
-		const timeout = setTimeout(() => {
-			this.botTimeouts.delete(currentPlayer.id);
-			this.runBotTurn(currentPlayer.id);
-		}, delay);
-		this.botTimeouts.set(currentPlayer.id, timeout);
+	/** Auto-play a random valid move for a player who ran out of time. */
+	private autoPlayTurn(playerId: string) {
+		if (!this.game || this.game.state.result) return;
+		if (this.game.currentPlayer.id !== playerId) return;
+
+		const state = this.game.state;
+		const moves = generateLegalMoves(state, playerId);
+
+		if (moves.length > 0) {
+			const move = moves[Math.floor(Math.random() * moves.length)];
+			this.game.nextTurn(playerId, move.tileId, move.side);
+		} else {
+			this.game.passTurn(playerId);
+		}
+
+		if (this.game.state.result) {
+			this.broadcast({ type: 'GAME_OVER', state: this.game.state });
+		} else {
+			this.broadcast({ type: 'MOVE_ACCEPTED', state: this.game.state });
+			this.handleNextTurn();
+		}
+	}
+
+	private clearTurnTimeout(playerId: string) {
+		const existing = this.turnTimeouts.get(playerId);
+		if (existing) {
+			clearTimeout(existing);
+			this.turnTimeouts.delete(playerId);
+		}
+	}
+
+	// Helper to clear all turn timeouts
+	private clearAllTurnTimeouts() {
+		for (const [, timeout] of this.turnTimeouts) {
+			clearTimeout(timeout);
+		}
+		this.turnTimeouts.clear();
 	}
 
 	private runBotTurn(playerId: string) {
@@ -517,7 +570,13 @@ export default class GapleRoom implements Server {
 		if (this.game.currentPlayer.id !== playerId) return;
 
 		const state = this.game.state;
-		const move = selectAiMove(state, playerId);
+		// Determine which seats are occupied by human players (their hands are visible to the AI)
+		// Map-then-filter to preserve seat indices (after filter, index doesn't match seat)
+		const humanPlayerIds = this.players
+			.map((p, i) => (p && !p.isBot ? String(i) : null))
+			.filter((x): x is string => x !== null);
+		// Give AI a 28-second time budget — slightly less than the 30s turn timer
+		const move = selectAiMove(state, playerId, { humanPlayerIds, timeLimitMs: 28_000 });
 
 		if (move) {
 			this.game.nextTurn(move.playerId, move.tileId, move.side);
@@ -547,11 +606,12 @@ export default class GapleRoom implements Server {
 			return;
 		}
 
-		// Clear bot timeouts
+		// Clear bot and turn timeouts
 		for (const [, timeout] of this.botTimeouts) {
 			clearTimeout(timeout);
 		}
 		this.botTimeouts.clear();
+		this.clearAllTurnTimeouts();
 
 		const previousWinnerId = this.game.state.result?.winnerId;
 		// Preserve cumulative scores across rounds

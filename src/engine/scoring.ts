@@ -16,17 +16,17 @@ export function scoreEmptyHand(
 	legalMovesCount: number
 ): RoundScore {
 	let pts = 1;
-	let type = 'Normal';
+	let type = 'Domi';
 
-	// Palang / Balak finish: menutup dengan kartu balak (kembar)
-	if (lastTile.left === lastTile.right) {
+	// Ceki Palang: balak yang cocok di kedua ujung papan (kiri & kanan sama)
+	if (lastTile.left === lastTile.right && legalMovesCount === 2) {
 		pts = 4;
-		type = 'Palang (Balak)';
+		type = 'Ceki Palang';
 	}
-	// Cecek: kartu bisa dimasukkan di kedua ujung
+	// Ceki: kartu non-balak yang bisa dimasukkan di kedua ujung
 	else if (legalMovesCount === 2) {
 		pts = 3;
-		type = 'Cium Kiri-Kanan (Cecek)';
+		type = 'Ceki';
 	}
 
 	return {
@@ -58,12 +58,12 @@ export function scoreBlockedGame(
 	})[0];
 
 	let pts = 1;
-	let type = 'Buntu (Mutlak)';
+	let type = 'Gab';
 
-	// Tembak: pemenang BUKAN yang menutup meja
+	// Gab Tangkap: pemenang BUKAN yang menutup meja
 	if (winner.id !== lastPlayerId) {
 		pts = 2;
-		type = 'Buntu (Kena Tembak)';
+		type = 'Gab Tangkap';
 	}
 
 	return {

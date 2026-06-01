@@ -18,7 +18,8 @@
 		activeTileId,
 		selectedTileId,
 		ondragstart,
-		ontileclick
+		ontileclick,
+		turnCountdown = 0
 	} = $props();
 
 	let boardTiles = $derived(game?.state?.board?.playedTiles ?? currentGameState?.board?.playedTiles ?? []);
@@ -151,6 +152,21 @@
 		</button>
 	{/each}
 </div>
+
+<!-- Turn countdown timer (above the stats bar, only shown when it's this player's turn) -->
+{#if turnCountdown > 0}
+	<div class="mb-1 flex justify-center">
+		<div
+			class="flex items-center gap-1.5 rounded-full border px-3 py-1 font-body text-sm font-bold
+			{turnCountdown <= 10
+				? 'border-red-500/40 bg-red-500/15 text-red-400'
+				: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
+		>
+			<span>⏱</span>
+			<span>{turnCountdown}s</span>
+		</div>
+	</div>
+{/if}
 
 <div class="px-8">
 

@@ -44,14 +44,14 @@
 		return players[offset];
 	}
 
-	// Coop visibility: teammates (same teamId) see each other's cards; opponents see card backs.
-	// In vs-ai mode, all cards are visible.
+	// Card visibility:
+	// - Main player's own hand is always visible
+	// - ALL other players' cards are hidden by default (click to reveal), including teammate cards
 	function getShowCardFaces(gamePlayerIndex: number): boolean {
-		if (!isCoopMode) return true;
-		const mainPlayer = p(0);
-		const targetPlayer = currentGameState?.players[gamePlayerIndex];
-		if (!mainPlayer || !targetPlayer) return true;
-		return mainPlayer.teamId === targetPlayer.teamId;
+		// Self — always visible
+		if (gamePlayerIndex === myPlayerIndex) return true;
+		// Everyone else — hidden behind card backs, click to reveal
+		return false;
 	}
 
 	const TILE_W = 112;
@@ -129,7 +129,7 @@
 		hapticDestroy();
 	});
 
-	// ── Auto-advance countdown ────────────────────────────────────────
+	// ── Auto-advance countdown (between rounds) ────────────────────────
 	let countdown = $state(0);
 
 	$effect(() => {
@@ -154,6 +154,112 @@
 
 		return () => clearInterval(interval);
 	});
+
+	// ── Per-player turn countdown timer ───────────────────────────────
+	// Shows for whoever's turn it is, whether human or AI.
+	const TURN_TIMEOUT_SECONDS = 30;
+	let turnTimerRemaining = $state(0);
+
+	$effect(() => {
+		const result = currentGameState?.result;
+		const turnIdx = currentGameState?.turnIndex;
+
+		if (result || turnIdx === undefined || turnIdx < 0) {
+			turnTimerRemaining = 0;
+			return;
+		}
+
+		turnTimerRemaining = TURN_TIMEOUT_SECONDS;
+
+		const interval = setInterval(() => {
+			turnTimerRemaining--;
+			if (turnTimerRemaining <= 0) {
+				clearInterval(interval);
+				// Auto-play only for local human player when time runs out
+				if (!isMultiplayer && turnIdx === myPlayerIndex) {
+					autoPlayTurn();
+				}
+			}
+		}, 1000);
+
+		return () => clearInterval(interval);
+	});
+
+	/** Get countdown value for a specific player index (0 = not this player's turn). */
+	function getCountdownForPlayer(gamePlayerIndex: number): number {
+		if (currentGameState?.result) return 0;
+		if (currentGameState?.turnIndex !== gamePlayerIndex) return 0;
+		return turnTimerRemaining;
+	}
+
+	function autoPlayTurn() {
+		if (!currentGameState || currentGameState.result) return;
+		const playerId = currentGameState.players[myPlayerIndex]?.id;
+		if (!playerId) return;
+
+		const moves = generateLegalMoves(currentGameState, playerId);
+		if (moves.length > 0) {
+			const randomMove = moves[Math.floor(Math.random() * moves.length)];
+			if (isMultiplayer && mp) {
+				mp.playTile(randomMove.tileId, randomMove.side);
+			} else if (game) {
+				game.nextTurn(playerId, randomMove.tileId, randomMove.side);
+			}
+		} else {
+			// No valid moves — auto-pass
+			if (isMultiplayer && mp) {
+				mp.pass();
+			} else if (game) {
+				game.passTurn(playerId);
+			}
+		}
+	}
+
+	// ── Pass animation tracking ────────────────────────────────────────
+	let lastPassEvent = $state<{ playerId: string; timestamp: number } | null>(null);
+	let prevEventCount = $state(0);
+
+	$effect(() => {
+		const events = currentGameState?.events;
+		if (!events) {
+			prevEventCount = 0;
+			return;
+		}
+
+		// Reset when a new round starts (events array cleared)
+		if (events.length < prevEventCount) {
+			prevEventCount = 0;
+		}
+
+		if (events.length > prevEventCount) {
+			for (let i = prevEventCount; i < events.length; i++) {
+				if (events[i].type === 'PLAYER_PASS') {
+					const pid = events[i].payload.playerId as string;
+					if (pid) {
+						lastPassEvent = { playerId: pid, timestamp: Date.now() };
+					}
+				}
+			}
+			prevEventCount = events.length;
+		}
+	});
+
+	// Auto-clear pass animation after 1.5s
+	$effect(() => {
+		if (!lastPassEvent) return;
+		const timer = setTimeout(() => {
+			lastPassEvent = null;
+		}, 1500);
+		return () => clearTimeout(timer);
+	});
+
+	function getPassTimestamp(playerIndex: number): number {
+		const player = currentGameState?.players[playerIndex];
+		if (!player || !lastPassEvent || lastPassEvent.playerId !== player.id) return 0;
+		const elapsed = Date.now() - lastPassEvent.timestamp;
+		if (elapsed > 1500) return 0;
+		return lastPassEvent.timestamp;
+	}
 
 	function handleReplay() {
 		if (isMultiplayer) {
@@ -210,9 +316,8 @@
 	});
 
 	// Mengecek apakah pertandingan (seluruh ronde) sudah selesai
-	const effectiveRound = $derived(mpCurrentRound);
 	const isMatchOver = $derived(
-		currentGameState?.result && effectiveRounds !== 'custom' && effectiveRound >= (effectiveRounds as number)
+		currentGameState?.result && effectiveRounds !== 'custom' && mpCurrentRound >= (effectiveRounds as number)
 	);
 
 	// Mengurutkan klasemen skor untuk akhir pertandingan
@@ -434,7 +539,7 @@
 	onclick={() => (selectedTile = null)}
 >
 	<!-- ── LAYER 1: Game Info Bar ─────────────────────────────── -->
-	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2  px-3 py-2 md:px-6 md:py-3">
+	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2 md:px-6 md:py-3">
 		<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3">
 			<span class="font-body text-xs font-semibold text-stone-100 uppercase">{mode?.replace(/-/g, ' ')}</span>
 			<span class="text-stone-500">|</span>
@@ -448,7 +553,7 @@
 		{#if isCoopMode && teamScores}
 			<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3">
 				<span class="font-body text-xs text-stone-500">Score:</span>
-				{#each teamScoreEntries as [teamKey, score], i(i)}
+				{#each teamScoreEntries as [teamKey, score], i}
 					<span class="font-body text-xs font-bold {i === 0 ? 'text-emerald-400' : 'text-red-400'}">
 						{score}
 					</span>
@@ -458,13 +563,11 @@
 				{/each}
 			</div>
 		{/if}
-
-
 	</div>
 
 	<!-- ── LAYER 2: Round Result / Match Over (inline, no modal) ── -->
 	{#if currentGameState?.result}
-		<div class="shrink-0  px-4 py-3">
+		<div class="shrink-0 px-4 py-3">
 			{#if isMatchOver}
 				<!-- Match completed -->
 				<div class="mx-auto max-w-lg text-center">
@@ -532,7 +635,7 @@
 			<!-- Spread opponents across the row: left / top / right with generous gaps -->
 			<div class="flex w-full">
 			<!-- Left Opponent (index 3) - shifted down -->
-			{#if leftPlayer }
+			{#if leftPlayer}
 				<div class="flex w-[calc(100%/3)] translate-y-6 flex-col items-center gap-1 md:translate-y-8">
 					<BotAvatar
 						player={leftPlayer}
@@ -557,6 +660,8 @@
 							ontileclick={handleSampleDisabled}
 							showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
 							tileSize="sm"
+							passTimestamp={getPassTimestamp((myPlayerIndex + 3) % 4)}
+							turnCountdown={getCountdownForPlayer((myPlayerIndex + 3) % 4)}
 						/>
 					</div>
 				</div>
@@ -564,7 +669,7 @@
 
 			<!-- Top Opponent (index 2) - normal position -->
 			{#if topPlayer}
-				<div class="flex  w-[calc(100%/3)] flex-col items-center gap-1">
+				<div class="flex w-[calc(100%/3)] flex-col items-center gap-1">
 					<BotAvatar
 						player={topPlayer}
 						isMyTurn={currentGameState.turnIndex === topTurnIndex}
@@ -588,6 +693,8 @@
 							ontileclick={handleSampleDisabled}
 							showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
 							tileSize="sm"
+							passTimestamp={getPassTimestamp((myPlayerIndex + 2) % 4)}
+							turnCountdown={getCountdownForPlayer((myPlayerIndex + 2) % 4)}
 						/>
 					</div>
 				</div>
@@ -595,7 +702,7 @@
 
 			<!-- Right Opponent (index 1) - shifted down -->
 			{#if rightPlayer}
-				<div class="flex w-[calc(100%/3)]  translate-y-6 flex-col items-center gap-1">
+				<div class="flex w-[calc(100%/3)] translate-y-6 flex-col items-center gap-1">
 					<BotAvatar
 						player={rightPlayer}
 						isMyTurn={currentGameState.turnIndex === rightTurnIndex}
@@ -619,6 +726,8 @@
 							ontileclick={handleSampleDisabled}
 							showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
 							tileSize="sm"
+							passTimestamp={getPassTimestamp((myPlayerIndex + 1) % 4)}
+							turnCountdown={getCountdownForPlayer((myPlayerIndex + 1) % 4)}
 						/>
 					</div>
 				</div>
@@ -727,6 +836,20 @@
 		{#if currentGameState}
 			{@const mainPlayer = p(0)}
 			{#if mainPlayer}
+				<!-- Pass animation above the main player's hand -->
+				{@const mainPassTs = getPassTimestamp(myPlayerIndex)}
+				{#if mainPassTs > 0}
+					<div
+						transition:fade={{ duration: 300 }}
+						class="mb-2 flex justify-center"
+					>
+						<div
+							class="animate-bounce rounded-full bg-amber-500/20 px-4 py-1 font-body text-sm font-bold text-amber-400"
+						>
+							PASS
+						</div>
+					</div>
+				{/if}
 				<MainPlayerHand
 					player={mainPlayer}
 					isMyTurn={currentGameState.turnIndex === myPlayerIndex}
@@ -742,6 +865,7 @@
 					ontileclick={handleTileClick}
 					{game}
 					{currentGameState}
+					turnCountdown={getCountdownForPlayer(myPlayerIndex)}
 				/>
 			{/if}
 		{/if}

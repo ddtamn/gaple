@@ -1,6 +1,6 @@
 import type { GameState, Move } from './types';
-import { getTile, removeTile } from './player';
-import { canPlayTile, playTile } from './board';
+import { getTile } from './player';
+import { playTile } from './board';
 
 export function isValidMove(state: GameState, move: Move): boolean {
 	if (state.result) {

@@ -47,9 +47,12 @@
 	// Card visibility:
 	// - Main player's own hand is always visible
 	// - ALL other players' cards are hidden by default (click to reveal), including teammate cards
+	// - When round ends (result is set), ALL cards are revealed
 	function getShowCardFaces(gamePlayerIndex: number): boolean {
 		// Self — always visible
 		if (gamePlayerIndex === myPlayerIndex) return true;
+		// Round over — reveal all cards
+		if (currentGameState?.result) return true;
 		// Everyone else — hidden behind card backs, click to reveal
 		return false;
 	}
@@ -156,33 +159,64 @@
 	});
 
 	// ── Per-player turn countdown timer ───────────────────────────────
-	// Shows for whoever's turn it is, whether human or AI.
+	// Managed OUTSIDE $effect lifecycle to avoid interval being killed by effect cleanup
+	// on every state update. Interval is stored directly, not returned from $effect.
 	const TURN_TIMEOUT_SECONDS = 30;
 	let turnTimerRemaining = $state(0);
+	let previousTurnIndex = $state(-1);
+	let tickInterval: ReturnType<typeof setInterval> | null = null;
 
+	function startTickTimer(timeoutCallback: () => void) {
+		stopTickTimer();
+		tickInterval = setInterval(() => {
+			turnTimerRemaining--;
+			if (turnTimerRemaining <= 0) {
+				stopTickTimer();
+				timeoutCallback();
+			}
+		}, 1000);
+	}
+
+	function stopTickTimer() {
+		if (tickInterval !== null) {
+			clearInterval(tickInterval);
+			tickInterval = null;
+		}
+	}
+
+	// Only reads currentGameState to detect turn changes — does NOT return cleanup.
+	// The interval is managed by startTickTimer/stopTickTimer which are called manually.
 	$effect(() => {
 		const result = currentGameState?.result;
 		const turnIdx = currentGameState?.turnIndex;
 
+		// Game over or no turn — reset
 		if (result || turnIdx === undefined || turnIdx < 0) {
+			stopTickTimer();
 			turnTimerRemaining = 0;
+			previousTurnIndex = -1;
 			return;
 		}
 
+		// If turnIndex hasn't changed, keep existing timer running
+		if (turnIdx === previousTurnIndex && turnTimerRemaining > 0) {
+			return;
+		}
+
+		// Turn changed — restart countdown from full
+		previousTurnIndex = turnIdx;
 		turnTimerRemaining = TURN_TIMEOUT_SECONDS;
-
-		const interval = setInterval(() => {
-			turnTimerRemaining--;
-			if (turnTimerRemaining <= 0) {
-				clearInterval(interval);
-				// Auto-play only for local human player when time runs out
-				if (!isMultiplayer && turnIdx === myPlayerIndex) {
-					autoPlayTurn();
-				}
+		startTickTimer(() => {
+			// Auto-play only for local human player when time runs out
+			if (!isMultiplayer && turnIdx === myPlayerIndex) {
+				autoPlayTurn();
 			}
-		}, 1000);
+		});
+	});
 
-		return () => clearInterval(interval);
+	// Cleanup on destroy
+	onDestroy(() => {
+		stopTickTimer();
 	});
 
 	/** Get countdown value for a specific player index (0 = not this player's turn). */
@@ -191,6 +225,23 @@
 		if (currentGameState?.turnIndex !== gamePlayerIndex) return 0;
 		return turnTimerRemaining;
 	}
+
+	// ── Thinking indicator for multiplayer ──────────────────────────────
+	// Shows briefly after a human player makes a move while waiting for server confirmation
+	let waitingForServer = $state(false);
+
+	$effect(() => {
+		// When game state updates after a move, clear the waiting indicator
+		if (waitingForServer) {
+			// Track game state so effect re-runs on server response
+			currentGameState;
+			// Small delay so the indicator isn't removed instantly
+			const timer = setTimeout(() => {
+				waitingForServer = false;
+			}, 200);
+			return () => clearTimeout(timer);
+		}
+	});
 
 	function autoPlayTurn() {
 		if (!currentGameState || currentGameState.result) return;
@@ -408,6 +459,7 @@
 		if (!activeTile || currentGameState?.result) return;
 		hapticTrigger('medium');
 		if (isMultiplayer && mp) {
+			waitingForServer = true;
 			mp.playTile(activeTile.id, side);
 		} else if (game && currentGameState) {
 			game.nextTurn(currentGameState.players[0].id, activeTile.id, side);
@@ -540,6 +592,12 @@
 >
 	<!-- ── LAYER 1: Game Info Bar ─────────────────────────────── -->
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2 md:px-6 md:py-3">
+		{#if waitingForServer}
+			<div class="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1">
+				<span class="inline-block size-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent"></span>
+				<span class="font-body text-xs font-semibold text-amber-400">Menunggu server...</span>
+			</div>
+		{/if}
 		<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3">
 			<span class="font-body text-xs font-semibold text-stone-100 uppercase">{mode?.replace(/-/g, ' ')}</span>
 			<span class="text-stone-500">|</span>
@@ -835,19 +893,30 @@
 	>
 		{#if currentGameState}
 			{@const mainPlayer = p(0)}
-			{#if mainPlayer}
-				<!-- Pass animation above the main player's hand -->
+			{#if mainPlayer}					<!-- Turn countdown + Pass animation above the main player's hand -->
+				{@const mainCountdown = getCountdownForPlayer(myPlayerIndex)}
 				{@const mainPassTs = getPassTimestamp(myPlayerIndex)}
-				{#if mainPassTs > 0}
-					<div
-						transition:fade={{ duration: 300 }}
-						class="mb-2 flex justify-center"
-					>
-						<div
-							class="animate-bounce rounded-full bg-amber-500/20 px-4 py-1 font-body text-sm font-bold text-amber-400"
-						>
-							PASS
-						</div>
+				{#if mainCountdown > 0 || mainPassTs > 0}
+					<div class="mb-2 flex items-center justify-center gap-2">
+						{#if mainCountdown > 0}
+							<div
+								class="flex items-center gap-1 rounded-full border px-3 py-1 font-body text-sm font-bold
+								{mainCountdown <= 10
+									? 'border-red-500/40 bg-red-500/15 text-red-400'
+									: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
+							>
+								<span>⏱</span>
+								<span>{mainCountdown}s</span>
+							</div>
+						{/if}
+						{#if mainPassTs > 0}
+							<div
+								transition:fade={{ duration: 300 }}
+								class="animate-bounce rounded-full bg-amber-500/20 px-4 py-1 font-body text-sm font-bold text-amber-400"
+							>
+								PASS
+							</div>
+						{/if}
 					</div>
 				{/if}
 				<MainPlayerHand
@@ -865,7 +934,6 @@
 					ontileclick={handleTileClick}
 					{game}
 					{currentGameState}
-					turnCountdown={getCountdownForPlayer(myPlayerIndex)}
 				/>
 			{/if}
 		{/if}

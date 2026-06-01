@@ -686,23 +686,54 @@
 		{#if currentGameState}
 			{@const leftPlayer = p(3)}
 			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
+			{@const leftPassTs = getPassTimestamp(leftTurnIndex)}
+			{@const leftCountdown = getCountdownForPlayer(leftTurnIndex)}
 			{@const topPlayer = p(2)}
 			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
+			{@const topPassTs = getPassTimestamp(topTurnIndex)}
+			{@const topCountdown = getCountdownForPlayer(topTurnIndex)}
 			{@const rightPlayer = p(1)}
 			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
+			{@const rightPassTs = getPassTimestamp(rightTurnIndex)}
+			{@const rightCountdown = getCountdownForPlayer(rightTurnIndex)}
 			<!-- Spread opponents across the row: left / top / right with generous gaps -->
 			<div class="flex w-full">
 			<!-- Left Opponent (index 3) - shifted down -->
 			{#if leftPlayer}
 				<div class="flex w-[calc(100%/3)] translate-y-6 flex-col items-center gap-1 md:translate-y-8">
-					<BotAvatar
-						player={leftPlayer}
-						isMyTurn={currentGameState.turnIndex === leftTurnIndex}
-						isMarked={markerPlayerId === leftPlayer.id}
-						winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
-						showScore={!isCoopMode}
-						size="sm"
-					/>
+					<div class="flex items-center gap-1.5">
+						<BotAvatar
+							player={leftPlayer}
+							isMyTurn={currentGameState.turnIndex === leftTurnIndex}
+							isMarked={markerPlayerId === leftPlayer.id}
+							winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
+							showScore={!isCoopMode}
+							size="sm"
+						/>
+						{#if leftPassTs > 0 || leftCountdown > 0}
+							<div class="flex flex-col gap-1">
+								{#if leftPassTs > 0}
+									<div
+										transition:fade={{ duration: 300 }}
+										class="animate-bounce rounded-full bg-amber-500/20 px-2 py-0.5 font-body text-[10px] font-bold text-amber-400 text-center"
+									>
+										PASS
+									</div>
+								{/if}
+								{#if leftCountdown > 0}
+									<div
+										class="flex items-center gap-1 rounded-full border px-2 py-0.5 font-body text-[10px] font-bold
+										{leftCountdown <= 10
+											? 'border-red-500/40 bg-red-500/15 text-red-400'
+											: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
+									>
+										<span>⏱</span>
+										<span>{leftCountdown}s</span>
+									</div>
+								{/if}
+							</div>
+						{/if}
+					</div>
 					<div class="pointer-events-auto">
 						<PlayerHand
 							player={leftPlayer}
@@ -718,8 +749,6 @@
 							ontileclick={handleSampleDisabled}
 							showCardFaces={getShowCardFaces((myPlayerIndex + 3) % 4)}
 							tileSize="sm"
-							passTimestamp={getPassTimestamp((myPlayerIndex + 3) % 4)}
-							turnCountdown={getCountdownForPlayer((myPlayerIndex + 3) % 4)}
 						/>
 					</div>
 				</div>
@@ -728,14 +757,39 @@
 			<!-- Top Opponent (index 2) - normal position -->
 			{#if topPlayer}
 				<div class="flex w-[calc(100%/3)] flex-col items-center gap-1">
-					<BotAvatar
-						player={topPlayer}
-						isMyTurn={currentGameState.turnIndex === topTurnIndex}
-						isMarked={markerPlayerId === topPlayer.id}
-						winCount={currentGameState.pointStandings[topPlayer.id] || 0}
-						showScore={!isCoopMode}
-						size="sm"
-					/>
+					<div class="flex items-center gap-1.5">
+						<BotAvatar
+							player={topPlayer}
+							isMyTurn={currentGameState.turnIndex === topTurnIndex}
+							isMarked={markerPlayerId === topPlayer.id}
+							winCount={currentGameState.pointStandings[topPlayer.id] || 0}
+							showScore={!isCoopMode}
+							size="sm"
+						/>
+						{#if topPassTs > 0 || topCountdown > 0}
+							<div class="flex flex-col gap-1">
+								{#if topPassTs > 0}
+									<div
+										transition:fade={{ duration: 300 }}
+										class="animate-bounce rounded-full bg-amber-500/20 px-2 py-0.5 font-body text-[10px] font-bold text-amber-400 text-center"
+									>
+										PASS
+									</div>
+								{/if}
+								{#if topCountdown > 0}
+									<div
+										class="flex items-center gap-1 rounded-full border px-2 py-0.5 font-body text-[10px] font-bold
+										{topCountdown <= 10
+											? 'border-red-500/40 bg-red-500/15 text-red-400'
+											: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
+									>
+										<span>⏱</span>
+										<span>{topCountdown}s</span>
+									</div>
+								{/if}
+							</div>
+						{/if}
+					</div>
 					<div class="pointer-events-auto">
 						<PlayerHand
 							player={topPlayer}
@@ -751,8 +805,6 @@
 							ontileclick={handleSampleDisabled}
 							showCardFaces={getShowCardFaces((myPlayerIndex + 2) % 4)}
 							tileSize="sm"
-							passTimestamp={getPassTimestamp((myPlayerIndex + 2) % 4)}
-							turnCountdown={getCountdownForPlayer((myPlayerIndex + 2) % 4)}
 						/>
 					</div>
 				</div>
@@ -761,14 +813,39 @@
 			<!-- Right Opponent (index 1) - shifted down -->
 			{#if rightPlayer}
 				<div class="flex w-[calc(100%/3)] translate-y-6 flex-col items-center gap-1">
-					<BotAvatar
-						player={rightPlayer}
-						isMyTurn={currentGameState.turnIndex === rightTurnIndex}
-						isMarked={markerPlayerId === rightPlayer.id}
-						winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
-						showScore={!isCoopMode}
-						size="sm"
-					/>
+					<div class="flex items-center gap-1.5">
+						<BotAvatar
+							player={rightPlayer}
+							isMyTurn={currentGameState.turnIndex === rightTurnIndex}
+							isMarked={markerPlayerId === rightPlayer.id}
+							winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
+							showScore={!isCoopMode}
+							size="sm"
+						/>
+						{#if rightPassTs > 0 || rightCountdown > 0}
+							<div class="flex flex-col gap-1">
+								{#if rightPassTs > 0}
+									<div
+										transition:fade={{ duration: 300 }}
+										class="animate-bounce rounded-full bg-amber-500/20 px-2 py-0.5 font-body text-[10px] font-bold text-amber-400 text-center"
+									>
+										PASS
+									</div>
+								{/if}
+								{#if rightCountdown > 0}
+									<div
+										class="flex items-center gap-1 rounded-full border px-2 py-0.5 font-body text-[10px] font-bold
+										{rightCountdown <= 10
+											? 'border-red-500/40 bg-red-500/15 text-red-400'
+											: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
+									>
+										<span>⏱</span>
+										<span>{rightCountdown}s</span>
+									</div>
+								{/if}
+							</div>
+						{/if}
+					</div>
 					<div class="pointer-events-auto">
 						<PlayerHand
 							player={rightPlayer}
@@ -784,8 +861,6 @@
 							ontileclick={handleSampleDisabled}
 							showCardFaces={getShowCardFaces((myPlayerIndex + 1) % 4)}
 							tileSize="sm"
-							passTimestamp={getPassTimestamp((myPlayerIndex + 1) % 4)}
-							turnCountdown={getCountdownForPlayer((myPlayerIndex + 1) % 4)}
 						/>
 					</div>
 				</div>
@@ -893,11 +968,31 @@
 	>
 		{#if currentGameState}
 			{@const mainPlayer = p(0)}
-			{#if mainPlayer}					<!-- Turn countdown + Pass animation above the main player's hand -->
+			{#if mainPlayer}					<!-- Main player avatar + info panel (PASS, countdown, score) -->
 				{@const mainCountdown = getCountdownForPlayer(myPlayerIndex)}
 				{@const mainPassTs = getPassTimestamp(myPlayerIndex)}
-				{#if mainCountdown > 0 || mainPassTs > 0}
-					<div class="mb-2 flex items-center justify-center gap-2">
+				{@const mainScore = currentGameState.pointStandings[mainPlayer.id] || 0}
+				<div class="mb-2 flex items-center justify-center gap-3">
+					<!-- Avatar box -->
+					<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
+						<img
+							src="https://api.dicebear.com/9.x/bottts/svg?seed={mainPlayer.name}&backgroundColor=78350f"
+							alt="Avatar"
+							class="h-7 w-7 rounded-full bg-stone-800 object-cover ring-2 ring-stone-600"
+						/>
+						<span class="font-body text-sm font-semibold text-stone-100">{mainPlayer.name}</span>
+					</div>
+
+					<!-- Info panel: PASS / countdown / score -->
+					<div class="flex items-center gap-2">
+						{#if mainPassTs > 0}
+							<div
+								transition:fade={{ duration: 300 }}
+								class="animate-bounce rounded-full bg-amber-500/20 px-3 py-1 font-body text-sm font-bold text-amber-400"
+							>
+								PASS
+							</div>
+						{/if}
 						{#if mainCountdown > 0}
 							<div
 								class="flex items-center gap-1 rounded-full border px-3 py-1 font-body text-sm font-bold
@@ -909,16 +1004,16 @@
 								<span>{mainCountdown}s</span>
 							</div>
 						{/if}
-						{#if mainPassTs > 0}
+						{#if !isCoopMode}
 							<div
-								transition:fade={{ duration: 300 }}
-								class="animate-bounce rounded-full bg-amber-500/20 px-4 py-1 font-body text-sm font-bold text-amber-400"
+								class="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-body text-sm font-bold text-primary"
 							>
-								PASS
+								<span>🏆</span>
+								<span>{mainScore}</span>
 							</div>
 						{/if}
 					</div>
-				{/if}
+				</div>
 				<MainPlayerHand
 					player={mainPlayer}
 					isMyTurn={currentGameState.turnIndex === myPlayerIndex}

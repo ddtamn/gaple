@@ -3,8 +3,7 @@
 	import DominoTile from './DominoTile.svelte';
 	import type { TileSize } from './DominoTile.svelte';
 
-	import { fade } from 'svelte/transition';
-
+	
 	interface Props {
 		player: { id: string; name: string; hand: Domino[] };
 		isMyTurn: boolean;
@@ -18,10 +17,7 @@
 		tileSize?: TileSize;
 		ondragstart: (tile: Domino, e: MouseEvent) => void;
 		ontileclick: (tile: Domino, e: MouseEvent) => void;
-		/** Timestamp of when this player passed, for animation. 0 = no pass. */
-		passTimestamp?: number;
-		/** Turn countdown remaining seconds. 0 = not this player's turn. */
-		turnCountdown?: number;
+	
 	}
 
 	let {
@@ -37,8 +33,7 @@
 		tileSize = 'sm',
 		ondragstart,
 		ontileclick,
-		passTimestamp = 0,
-		turnCountdown = 0
+
 	}: Props = $props();
 
 	const isHandVertical = true;
@@ -71,8 +66,6 @@
 		if (revealTimer) clearTimeout(revealTimer);
 	});
 
-	// ── Pass animation ─────────────────────────────────────────────
-	const showPassAnimation = $derived(passTimestamp > 0);
 </script>
 
 <div
@@ -129,30 +122,7 @@
 		{/if}
 	</div>
 
-	<!-- Pass animation: below the hand for opponents -->
-	{#if showPassAnimation && !isMain}
-		<div
-			transition:fade={{ duration: 400 }}
-			class="mt-1 animate-bounce rounded-full bg-amber-500/20 px-3 py-0.5 font-body text-xs font-bold text-amber-400"
-		>
-			PASS
-		</div>
-	{/if}
 
-	<!-- Turn countdown timer (only shown when it's this player's turn) -->
-	{#if turnCountdown > 0 && !isMain}
-		<div class="mt-1 flex items-center justify-center gap-1">
-			<div
-				class="flex items-center gap-1 rounded-full border px-2 py-0.5 font-body text-xs font-bold
-				{turnCountdown <= 10
-					? 'border-red-500/40 bg-red-500/15 text-red-400'
-					: 'border-amber-500/30 bg-amber-500/10 text-amber-400'}"
-			>
-				<span class="text-[10px]">⏱</span>
-				<span>{turnCountdown}s</span>
-			</div>
-		</div>
-	{/if}
 
 	{#if isMain}
 		<div class="hidden w-full origin-bottom scale-[0.8] bg-red-300">

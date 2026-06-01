@@ -509,7 +509,7 @@ export default class GapleRoom implements Server {
 
 		if (playerInfo?.isBot) {
 			// Bot turn with delay
-			const delay = 800 + Math.random() * 600;
+			const delay = 300 + Math.random() * 400;
 			const timeout = setTimeout(() => {
 				this.botTimeouts.delete(currentPlayer.id);
 				this.runBotTurn(currentPlayer.id);

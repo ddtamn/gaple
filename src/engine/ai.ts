@@ -11,12 +11,15 @@ import { shouldUseEndgameSolver, solveEndgameMove } from './ai/endgame';
 
 const ITERATIONS_PER_MOVE = 350;
 const MAX_PLAYOUT_TURNS = 120;
-const HUMAN_PLAYER_ID = '0';
 
 export interface AiMoveOptions {
 	seed?: string;
 	iterations?: number;
 	maxPlayoutTurns?: number;
+	/** IDs of human players whose hands are visible to the AI. Defaults to ['0']. */
+	humanPlayerIds?: string[];
+	/** Optional time limit in milliseconds. If exceeded, AI returns the best move found so far. */
+	timeLimitMs?: number;
 }
 
 export interface AiMoveConfig {
@@ -50,6 +53,7 @@ export function createAiConfig(options: AiMoveOptions = {}): AiMoveConfig {
 function determinizeState(
 	state: GameState,
 	aiPlayerId: string,
+	knownPlayerIds: Set<string>,
 	rng = createSeededRng('gaple-ai')
 ): GameState {
 	const tempManager = new GameManager(
@@ -64,8 +68,12 @@ function determinizeState(
 
 	const aiPlayer = clonedState.players.find((player) => player.id === aiPlayerId);
 	aiPlayer?.hand.forEach((tile) => knownTiles.add(tileKey(tile)));
-	const humanPlayer = clonedState.players.find((player) => player.id === HUMAN_PLAYER_ID);
-	humanPlayer?.hand.forEach((tile) => knownTiles.add(tileKey(tile)));
+	// All known player IDs (e.g. human players whose hands are visible) have their tiles exposed
+	clonedState.players.forEach((player) => {
+		if (knownPlayerIds.has(player.id)) {
+			player.hand.forEach((tile) => knownTiles.add(tileKey(tile)));
+		}
+	});
 
 	const availableTiles = getStandardDeck().filter((tile) => !knownTiles.has(tileKey(tile)));
 	const belief = createBelief();
@@ -73,7 +81,7 @@ function determinizeState(
 	const mysteryTiles = shuffle(weightedTiles, rng);
 
 	clonedState.players.forEach((player) => {
-		if (player.id !== aiPlayerId && player.id !== HUMAN_PLAYER_ID) {
+		if (!knownPlayerIds.has(player.id)) {
 			const weight = estimateHiddenHandWeight(state, player.id);
 			const size = Math.max(0, Math.min(player.hand.length, mysteryTiles.length));
 			const candidateTiles = mysteryTiles.splice(0, size);
@@ -91,6 +99,7 @@ export function selectAiMove(
 ): Move | null {
 	const config = createAiConfig(options);
 	const rng = createSeededRng(config.seed);
+	const knownPlayerIds = new Set([playerId, ...(options.humanPlayerIds ?? ['0'])]);
 	const legalMoves = generateLegalMoves(state, playerId);
 
 	if (legalMoves.length === 0) return null;
@@ -110,7 +119,15 @@ export function selectAiMove(
 	let bestMove = legalMoves[0];
 	let highestScore = Number.NEGATIVE_INFINITY;
 
+	const startTime = Date.now();
+	const timeLimitMs = options.timeLimitMs ?? 0;
+
 	for (const move of legalMoves) {
+		// Check time limit at the start of each move evaluation
+		if (timeLimitMs > 0 && Date.now() - startTime > timeLimitMs) {
+			console.log(`[AI ${playerId}] Time budget exceeded (${timeLimitMs}ms), returning best move so far`);
+			break;
+		}
 		const tacticalScore = scoreTacticalMove(state, move, playerId);
 		if (tacticalScore >= 10_000) {
 			return move;
@@ -119,7 +136,7 @@ export function selectAiMove(
 		let playoutScore = 0;
 
 		for (let i = 0; i < config.iterations; i++) {
-			const simState = determinizeState(state, playerId, rng);
+			const simState = determinizeState(state, playerId, knownPlayerIds, rng);
 			const simManager = new GameManager(simState.players.map((player) => player.name));
 			simManager.state = simState;
 

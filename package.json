@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"dev:all": "concurrently --names 'VITE,PARTYKIT' --prefix-colors 'blue,green' 'vite dev' 'partykit dev'",
+		"dev:all": "concurrently --names \"VITE,PARTYKIT\" --prefix-colors \"blue,green\" \"vite dev\" \"partykit dev\"",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",

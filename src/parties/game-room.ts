@@ -767,7 +767,7 @@ const SEATS_TEAMS: [number[], number[]] = [
 		if (!this.apiBaseUrl || !this.game || !this.game.state.result) return;
 
 		const state = this.game.state;
-		const result = state.result;
+		const result = state.result!; // Non-null: guarded above
 		const durationSeconds = Math.round((Date.now() - this.gameStartTime) / 1000);
 
 		// Build participants array from all 4 players
@@ -780,11 +780,18 @@ const SEATS_TEAMS: [number[], number[]] = [
 			isWinner: result.winnerId === String(index)
 		}));
 
-		// Filter out players without profile IDs
+		// Filter out players without profile IDs only log a warning
 		const validParticipants = participants.filter((p) => p.profileId);
 
 		if (validParticipants.length < 4) {
-			console.warn('[GapleRoom] Skipping match submission: not all players have profileIds');
+			console.warn(
+				`[GapleRoom] Submitting match with only ${validParticipants.length}/4 profileIds`
+			);
+			// Still submit with whatever profileIds we have
+		}
+
+		if (validParticipants.length === 0) {
+			console.warn('[GapleRoom] No profileIds available, skipping match submission');
 			return;
 		}
 

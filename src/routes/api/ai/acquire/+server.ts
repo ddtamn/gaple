@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { profiles } from '$lib/server/db/schema';
-import { eq, lt, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import type { RequestHandler } from './$types';
 
@@ -51,12 +51,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (bots.length < count) {
 		const newBots: Array<{
 			id: string;
+			userId: null;
 			name: string;
 			isBot: boolean;
 			isActive: boolean;
 			mmr: number;
 			matchesPlayed: number;
 			matchesWon: number;
+			lastPlayedAt: null;
 			createdAt: Date;
 		}> = [];
 
@@ -76,12 +78,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			const mmr = 800 + Math.floor(Math.random() * 1400);
 			newBots.push({
 				id: crypto.randomUUID(),
+				userId: null,
 				name: botNames[i] || `Bot-${crypto.randomUUID().slice(0, 4)}`,
 				isBot: true,
 				isActive: true,
 				mmr,
 				matchesPlayed: 0,
 				matchesWon: 0,
+				lastPlayedAt: null,
 				createdAt: new Date()
 			});
 		}

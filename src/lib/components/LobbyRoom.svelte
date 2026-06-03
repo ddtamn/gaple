@@ -157,11 +157,13 @@
 			<!-- Player Name -->
 			<div>
 				<label
+					for="lobby-name"
 					class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase"
 				>
 					Your Name
 				</label>
 				<input
+					id="lobby-name"
 					bind:value={playerName}
 					placeholder="Masukkan namamu..."
 					class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-sm text-stone-100 transition outline-none placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
@@ -171,11 +173,13 @@
 			{#if isCreate}
 				<div>
 					<label
+						for="lobby-room-code"
 						class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase"
 					>
 						Room Code (optional)
 					</label>
 					<input
+						id="lobby-room-code"
 						bind:value={roomCode}
 						placeholder="Kosongkan untuk random"
 						class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 font-body text-sm text-stone-100 uppercase transition outline-none placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"
@@ -224,11 +228,13 @@
 			{:else}
 				<div>
 					<label
+						for="lobby-join-code"
 						class="mb-1 block font-body text-xs font-semibold tracking-wide text-stone-500 uppercase"
 					>
 						Room Code
 					</label>
 					<input
+						id="lobby-join-code"
 						bind:value={joinCodeInput}
 						placeholder="Contoh: X7B9"
 						class="w-full rounded-lg border border-stone-700 bg-surface px-4 py-3 text-center font-body text-2xl font-bold tracking-[0.3em] text-stone-100 uppercase transition outline-none placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-stone-600 focus:border-primary focus:ring-1 focus:ring-primary"

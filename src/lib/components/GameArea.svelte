@@ -251,10 +251,11 @@
 		const moves = generateLegalMoves(currentGameState, playerId);
 		if (moves.length > 0) {
 			const randomMove = moves[Math.floor(Math.random() * moves.length)];
+			const side = randomMove.side as 'left' | 'right'; // Legal moves are never 'center'
 			if (isMultiplayer && mp) {
-				mp.playTile(randomMove.tileId, randomMove.side);
+				mp.playTile(randomMove.tileId, side);
 			} else if (game) {
-				game.nextTurn(playerId, randomMove.tileId, randomMove.side);
+				game.nextTurn(playerId, randomMove.tileId, side);
 			}
 		} else {
 			// No valid moves — auto-pass

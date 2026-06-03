@@ -2,7 +2,8 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-	const { players, totalHumans } = data;
+	const players = $derived(data.players);
+	const totalHumans = $derived(data.totalHumans);
 </script>
 
 <div class="flex min-h-dvh flex-col items-center bg-background px-4 py-8 text-stone-100">

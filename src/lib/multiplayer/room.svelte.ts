@@ -55,7 +55,14 @@ let teammateName = $derived.by(() => {
 
 // ── Actions ───────────────────────────────────────────────────────────
 
-function connect(host: string, roomIdInput: string, name: string, mode?: string, rounds?: number | string) {
+function connect(
+	host: string,
+	roomIdInput: string,
+	name: string,
+	mode?: string,
+	rounds?: number | string,
+	apiUrl?: string
+) {
 	if (partySocket) disconnect();
 
 	connectionState = 'connecting';
@@ -66,12 +73,7 @@ function connect(host: string, roomIdInput: string, name: string, mode?: string,
 	const query: Record<string, string> = { name };
 	if (mode) query.mode = mode;
 	if (rounds !== undefined) query.rounds = String(rounds);
-
-	partySocket = new PartySocket({
-		host,
-		room: roomIdInput,
-		query
-	});
+	if (apiUrl) query.apiUrl = apiUrl;
 
 	partySocket.onopen = () => {
 		connectionState = 'connected';

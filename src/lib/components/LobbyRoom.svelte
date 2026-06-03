@@ -96,10 +96,16 @@
 		}
 	});
 
+	function getApiUrl(): string {
+		// The SvelteKit server URL for PartyKit to call back to
+		if (typeof window === 'undefined') return '';
+		return window.location.origin;
+	}
+
 	function createRoom() {
 		const name = playerName.trim() || 'Player';
 		const code = roomCode.trim() || generateRoomCode();
-		mp.connect(host, code, name, mode, rounds);
+		mp.connect(host, code, name, mode, rounds, getApiUrl());
 		roomCreated = true;
 	}
 
@@ -107,7 +113,7 @@
 		const name = playerName.trim() || 'Player';
 		const code = joinCodeInput.trim().toUpperCase();
 		if (code.length < 4) return;
-		mp.connect(host, code, name);
+		mp.connect(host, code, name, undefined, undefined, getApiUrl());
 		roomCreated = true;
 	}
 

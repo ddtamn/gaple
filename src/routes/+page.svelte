@@ -3,7 +3,7 @@
 	import LobbyRoom from '$lib/components/LobbyRoom.svelte';
 	import { getMultiplayer } from '$lib/multiplayer/room.svelte';
 
-	type ViewState = 'lobby' | 'setup-mode' | 'setup-rounds' | 'playing' | 'join-room' | 'multiplayer-room' | 'multiplayer-game' | 'rules' | 'leaderboard';
+	type ViewState = 'lobby' | 'setup-mode' | 'setup-rounds' | 'playing' | 'join-room' | 'multiplayer-room' | 'multiplayer-game' | 'rules';
 	type GameMode = 'vs-ai' | 'coop-vs-ai' | 'coop-vs-coop' | null;
 	type Rounds = 3 | 5 | 7 | 'custom' | null;
 
@@ -72,12 +72,12 @@
 				>
 					🔗 Join Room
 				</button>
-				<button
-					onclick={() => (currentView = 'leaderboard')}
-					class="rounded border-[1.5px] border-primary bg-transparent px-8 py-3.5 font-body text-base font-semibold text-primary transition hover:bg-warm-hover active:scale-[0.98]"
+				<a
+					href="/leaderboard"
+					class="block rounded border-[1.5px] border-primary bg-transparent px-8 py-3.5 text-center font-body text-base font-semibold text-primary transition hover:bg-warm-hover active:scale-[0.98]"
 				>
 					Leaderboard
-				</button>
+				</a>
 				<button
 					onclick={() => (currentView = 'rules')}
 					class="rounded border-[1.5px] border-primary bg-transparent px-8 py-3.5 font-body text-base font-semibold text-primary transition hover:bg-warm-hover active:scale-[0.98]"
@@ -196,9 +196,9 @@
 		<GameArea mode={selectedMode} rounds={selectedRounds} onExit={backToLobby} />
 	{/if}
 
-	{#if currentView === 'rules' || currentView === 'leaderboard'}
+	{#if currentView === 'rules'}
 		<div class="z-10 flex flex-col items-center">
-			<h2 class="mb-4 font-headline text-3xl font-semibold uppercase text-stone-100">{currentView}</h2>
+			<h2 class="mb-4 font-headline text-3xl font-semibold uppercase text-stone-100">Game Rules</h2>
 			<p class="mb-8 font-body text-stone-400">Fitur ini sedang dalam perancangan...</p>
 			<button
 				onclick={backToLobby}					class="rounded border-[1.5px] border-primary bg-transparent px-6 py-3 font-body text-sm font-semibold text-primary transition hover:bg-warm-hover"

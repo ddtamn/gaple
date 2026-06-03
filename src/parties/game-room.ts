@@ -35,6 +35,7 @@ interface PlayerInfo {
 	connected: boolean;
 	ready: boolean;
 	isBot?: boolean;
+	profileId?: string; // Database profile ID for match submission
 }
 
 // ── Room Implementation ───────────────────────────────────────────────
@@ -43,9 +44,7 @@ const SEAT_NAMES = ['Pemain Bawah', 'AI Kanan', 'Pemain Atas', 'AI Kiri'];
 const SEATS_TEAMS: [number[], number[]] = [
 	[0, 2],
 	[1, 3]
-];
-
-export default class GapleRoom implements Server {
+];	export default class GapleRoom implements Server {
 	readonly options = { hibernate: false };
 
 	private players: PlayerInfo[] = [];
@@ -55,6 +54,8 @@ export default class GapleRoom implements Server {
 	private currentRound = 0;
 	private botTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 	private storageLoaded = false;
+	private apiBaseUrl = ''; // URL to SvelteKit API for match submission / AI acquisition
+	private gameStartTime = 0; // Timestamp when the game started (for duration)
 
 	constructor(readonly room: import('partykit/server').Room) {}
 
@@ -79,6 +80,7 @@ export default class GapleRoom implements Server {
 				this.gameMode = room.mode || 'ffa';
 				this.gameRounds = room.rounds || 3;
 				this.currentRound = room.currentRound || 0;
+				this.apiBaseUrl = room.apiBaseUrl || '';
 			}
 
 			if (players) {
@@ -109,7 +111,8 @@ export default class GapleRoom implements Server {
 			await this.room.storage.put('room', {
 				mode: this.gameMode,
 				rounds: this.gameRounds,
-				currentRound: this.currentRound
+				currentRound: this.currentRound,
+				apiBaseUrl: this.apiBaseUrl
 			});
 			await this.room.storage.put('players', this.players);
 		} catch (e) {
@@ -149,6 +152,8 @@ export default class GapleRoom implements Server {
 		if (this.players.length === 0 && (modeParam === 'coop-vs-ai' || modeParam === 'coop-vs-coop')) {
 			this.gameMode = modeParam;
 			this.gameRounds = parseInt(roundsParam, 10) || 3;
+			// Store API base URL for match submission
+			this.apiBaseUrl = url.searchParams.get('apiUrl') || '';
 		}
 
 		// ── Reconnection: player rejoining mid-game ───────────────
@@ -344,9 +349,15 @@ export default class GapleRoom implements Server {
 				this.sendTo(sender, { type: 'ERROR', message: 'Need a teammate to join first' });
 				return;
 			}
+			// Acquire AI bots from API before filling seats
+			await this.acquireAiBots(2);
 			this.fillBotSeats();
 		} else {
 			// FFA: fill all with bots
+			// If no API URL, fill with generic bots (offline mode)
+			if (this.apiBaseUrl) {
+				await this.acquireAiBots(4);
+			}
 			this.fillBotSeats();
 		}
 
@@ -373,7 +384,8 @@ export default class GapleRoom implements Server {
 		for (let i = 0; i < this.players.length; i++) {
 			const p = this.players[i];
 			if (p) seatAssignment[p.id] = i;
-		}
+		}		// Record game start time for duration calculation
+		this.gameStartTime = Date.now();
 
 		// Broadcast initial state
 		this.broadcast({
@@ -679,6 +691,11 @@ export default class GapleRoom implements Server {
 	private broadcast(msg: ServerMessage) {
 		this.room.broadcast(JSON.stringify(msg));
 		this.persist(); // Persist state after every broadcast
+
+		// Fire-and-forget match submission when the game ends
+		if (msg.type === 'GAME_OVER' && this.game && this.apiBaseUrl) {
+			this.submitMatchResult();
+		}
 	}
 
 	private sendTo(connection: Connection, msg: ServerMessage) {
@@ -692,5 +709,105 @@ export default class GapleRoom implements Server {
 	private sendToPlayer(playerId: string, msg: ServerMessage) {
 		const conn = this.room.getConnection(playerId);
 		if (conn) this.sendTo(conn, msg);
+	}
+
+	// ── Database API Integration ─────────────────────────────────────
+
+	/**
+	 * Acquire AI bots from the backend API and assign them to bot seats.
+	 * Falls back gracefully if the API is unavailable.
+	 */
+	private async acquireAiBots(count: number) {
+		if (!this.apiBaseUrl) return;
+
+		try {
+			const response = await fetch(`${this.apiBaseUrl}/api/ai/acquire`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ count })
+			});
+
+			if (!response.ok) {
+				console.warn('[GapleRoom] Failed to acquire AI bots:', response.status);
+				return;
+			}
+
+			const data = await response.json();
+			const bots: Array<{ id: string; name: string; mmr: number }> = data.bots || [];
+
+			// Track next bot index to assign
+			let botIndex = 0;
+			const seatIndices = this.gameMode === 'coop-vs-ai' ? [1, 3] : [0, 1, 2, 3];
+
+			for (const seatIdx of seatIndices) {
+				if (botIndex >= bots.length) break;
+				if (this.players[seatIdx] && this.players[seatIdx].isBot) {
+					this.players[seatIdx] = {
+						id: `bot-${bots[botIndex].id.slice(0, 8)}`,
+						name: bots[botIndex].name,
+						connected: true,
+						ready: true,
+						isBot: true,
+						profileId: bots[botIndex].id
+					};
+					botIndex++;
+				}
+			}
+
+			console.log(`[GapleRoom] Acquired ${botIndex} AI bots from API`);
+		} catch (err) {
+			console.warn('[GapleRoom] acquireAiBots error (falling back to generic bots):', err);
+		}
+	}
+
+	/**
+	 * Submit match results to the backend API after the game ends.
+	 */
+	private async submitMatchResult() {
+		if (!this.apiBaseUrl || !this.game || !this.game.state.result) return;
+
+		const state = this.game.state;
+		const result = state.result;
+		const durationSeconds = Math.round((Date.now() - this.gameStartTime) / 1000);
+
+		// Build participants array from all 4 players
+		const participants = this.players.map((p, index) => ({
+			profileId: p.profileId || '',
+			teamId: this.gameMode === 'coop-vs-ai' || this.gameMode === 'coop-vs-coop'
+				? (index === 0 || index === 2 ? 0 : 1)
+				: undefined,
+			score: state.pointStandings[String(index)] || 0,
+			isWinner: result.winnerId === String(index)
+		}));
+
+		// Filter out players without profile IDs
+		const validParticipants = participants.filter((p) => p.profileId);
+
+		if (validParticipants.length < 4) {
+			console.warn('[GapleRoom] Skipping match submission: not all players have profileIds');
+			return;
+		}
+
+		try {
+			const response = await fetch(`${this.apiBaseUrl}/api/match/submit`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					roomId: this.room.id,
+					mode: this.gameMode,
+					durationSeconds,
+					participants: validParticipants
+				})
+			});
+
+			if (response.ok) {
+				const data = await response.json();
+				console.log(`[GapleRoom] Match submitted: ${data.matchId}`);
+			} else {
+				console.warn('[GapleRoom] Failed to submit match:', response.status);
+			}
+		} catch (err) {
+			console.warn('[GapleRoom] submitMatchResult error:', err);
+		}
 	}
 }

@@ -31,6 +31,14 @@ function createDeck(): Domino[] {
 	return deck;
 }
 
+function countDoubles(hand: Domino[]): number {
+	return hand.reduce((count, tile) => count + (tile.left === tile.right ? 1 : 0), 0);
+}
+
+function hasTooManyDoubles(players: Player[]): boolean {
+	return players.some((player) => countDoubles(player.hand) >= 5);
+}
+
 function createPlayers(names: string[], teamConfig?: TeamConfig): Player[] {
 	const players = names.map((name, index) => createPlayer(index.toString(), name));
 	if (teamConfig?.mode === 'teams' && teamConfig.layout) {
@@ -59,14 +67,28 @@ export function createGameState(
 	teamConfig?: TeamConfig
 ): GameState {
 	const rng = createSeededRng(seed);
-	const deck = shuffle(createDeck(), rng);
-	const players = createPlayers(playerNames, teamConfig);
+	const maxDealAttempts = 1000;
+	let players: Player[] = [];
+	let remainingDeck: Domino[] = [];
 
-	let remainingDeck = [...deck];
-	for (let i = 0; i < players.length; i++) {
-		const hand = remainingDeck.slice(0, 7);
-		remainingDeck = remainingDeck.slice(7);
-		players[i].hand = receiveTiles([], hand);
+	for (let attempt = 0; attempt < maxDealAttempts; attempt++) {
+		const deck = shuffle(createDeck(), rng);
+		players = createPlayers(playerNames, teamConfig);
+
+		remainingDeck = [...deck];
+		for (let i = 0; i < players.length; i++) {
+			const hand = remainingDeck.slice(0, 7);
+			remainingDeck = remainingDeck.slice(7);
+			players[i].hand = receiveTiles([], hand);
+		}
+
+		if (!hasTooManyDoubles(players)) {
+			break;
+		}
+
+		if (attempt === maxDealAttempts - 1) {
+			throw new Error('Unable to deal a balanced hand after repeated shuffles');
+		}
 	}
 
 	const turnIndex = startingPlayerId

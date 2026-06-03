@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GameManager } from '../game';
+import { createGameState, GameManager } from '../game';
 
 describe('Domino engine', () => {
 	it('starts the match with the player holding 3|3 as the first mover', () => {
@@ -44,6 +44,16 @@ describe('Domino engine', () => {
 			expect(player.hand).toHaveLength(7);
 		});
 		expect(game.board.playedTiles).toHaveLength(0);
+	});
+
+	it('re-deals until no player gets 5 or more doubles', () => {
+		const state = createGameState(['A', 'B', 'C', 'D'], 'test-seed');
+
+		expect(state.players).toHaveLength(4);
+		state.players.forEach((player) => {
+			expect(player.hand).toHaveLength(7);
+			expect(player.hand.filter((tile) => tile.left === tile.right).length).toBeLessThan(5);
+		});
 	});
 
 	it('records a valid first move and advances the turn', () => {

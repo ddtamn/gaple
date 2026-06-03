@@ -25,3 +25,10 @@ vite.config.ts.timestamp-*
 # PartyKit
 .partykit/
 partykit/
+
+# SQLite database (dev)
+/data/
+!data/.gitkeep
+
+# Drizzle migrations
+/drizzle/

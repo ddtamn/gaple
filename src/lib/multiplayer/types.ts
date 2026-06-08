@@ -8,6 +8,7 @@ export interface PlayerInfo {
 	connected: boolean;
 	ready: boolean;
 	isBot?: boolean;
+	profileId?: string;
 }
 
 export interface RoomStateMessage {

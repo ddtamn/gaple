@@ -61,7 +61,8 @@ function connect(
 	name: string,
 	mode?: string,
 	rounds?: number | string,
-	apiUrl?: string
+	apiUrl?: string,
+	profileId?: string
 ) {
 	if (partySocket) disconnect();
 
@@ -74,30 +75,33 @@ function connect(
 	if (mode) query.mode = mode;
 	if (rounds !== undefined) query.rounds = String(rounds);
 	if (apiUrl) query.apiUrl = apiUrl;
+	if (profileId) query.profileId = profileId;
 
-	partySocket.onopen = () => {
-		connectionState = 'connected';
-	};
+	if (partySocket) {
+		partySocket.onopen = () => {
+			connectionState = 'connected';
+		};
 
-	partySocket.onclose = () => {
-		connectionState = 'disconnected';
-	};
+		partySocket.onclose = () => {
+			connectionState = 'disconnected';
+		};
 
-	partySocket.onerror = (event: Event) => {
-		const errorMsg = 'Connection failed';
-		console.error('[PartySocket]', errorMsg, event);
-		lastError = errorMsg;
-		connectionState = 'disconnected';
-	};
+		partySocket.onerror = (event: Event) => {
+			const errorMsg = 'Connection failed';
+			console.error('[PartySocket]', errorMsg, event);
+			lastError = errorMsg;
+			connectionState = 'disconnected';
+		};
 
-	partySocket.onmessage = (event: MessageEvent) => {
-		try {
-			const msg = JSON.parse(event.data as string) as ServerMessage;
-			handleServerMessage(msg);
-		} catch (e) {
-			console.error('Failed to parse message:', e);
-		}
-	};
+		partySocket.onmessage = (event: MessageEvent) => {
+			try {
+				const msg = JSON.parse(event.data as string) as ServerMessage;
+				handleServerMessage(msg);
+			} catch (e) {
+				console.error('Failed to parse message:', e);
+			}
+		};
+	}
 }
 
 function disconnect() {

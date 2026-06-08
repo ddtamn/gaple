@@ -1,4 +1,6 @@
 import type { Server, Connection, ConnectionContext } from 'partykit/server';
+import crypto from 'node:crypto';
+import { PARTYKIT_INTERNAL_HEADER } from '../lib/internal-auth';
 import { GameManager } from '../engine/game';
 import { selectAiMove } from '../engine/ai';
 import { generateLegalMoves } from '../engine/moves';
@@ -56,6 +58,7 @@ const SEATS_TEAMS: [number[], number[]] = [
 	private storageLoaded = false;
 	private apiBaseUrl = ''; // URL to SvelteKit API for match submission / AI acquisition
 	private gameStartTime = 0; // Timestamp when the game started (for duration)
+	private internalToken = process.env.PARTYKIT_INTERNAL_TOKEN || '';
 
 	constructor(readonly room: import('partykit/server').Room) {}
 
@@ -147,6 +150,7 @@ const SEATS_TEAMS: [number[], number[]] = [
 		const name = url.searchParams.get('name') || `Player-${connection.id.slice(0, 4)}`;
 		const modeParam = url.searchParams.get('mode') || '';
 		const roundsParam = url.searchParams.get('rounds') || '3';
+		const profileIdParam = url.searchParams.get('profileId') || '';
 
 		// Set mode from the first connection (the room creator)
 		if (this.players.length === 0 && (modeParam === 'coop-vs-ai' || modeParam === 'coop-vs-coop')) {
@@ -164,6 +168,9 @@ const SEATS_TEAMS: [number[], number[]] = [
 			if (existingIndex >= 0) {
 				this.players[existingIndex].id = connection.id;
 				this.players[existingIndex].connected = true;
+				if (profileIdParam) {
+					this.players[existingIndex].profileId = profileIdParam;
+				}
 				connection.setState({ seatIndex: existingIndex, playerId: connection.id });
 
 				// Fill bot seats if needed (coop-vs-ai)
@@ -212,7 +219,8 @@ const SEATS_TEAMS: [number[], number[]] = [
 			id: connection.id,
 			name: name,
 			connected: true,
-			ready: false
+			ready: false,
+			profileId: profileIdParam || undefined
 		};
 
 		this.players[seatIndex] = playerInfo;
@@ -472,7 +480,8 @@ const SEATS_TEAMS: [number[], number[]] = [
 						name: SEAT_NAMES[seatIdx] || `Bot ${seatIdx}`,
 						connected: true,
 						ready: true,
-						isBot: true
+						isBot: true,
+						profileId: crypto.randomUUID()
 					};
 				}
 			}
@@ -487,7 +496,8 @@ const SEATS_TEAMS: [number[], number[]] = [
 				name: SEAT_NAMES[botIndex] || `Bot ${botIndex}`,
 				connected: true,
 				ready: true,
-				isBot: true
+				isBot: true,
+				profileId: crypto.randomUUID()
 			});
 		}
 	}
@@ -723,7 +733,10 @@ const SEATS_TEAMS: [number[], number[]] = [
 		try {
 			const response = await fetch(`${this.apiBaseUrl}/api/ai/acquire`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					[PARTYKIT_INTERNAL_HEADER]: this.internalToken
+				},
 				body: JSON.stringify({ count })
 			});
 
@@ -772,7 +785,7 @@ const SEATS_TEAMS: [number[], number[]] = [
 
 		// Build participants array from all 4 players
 		const participants = this.players.map((p, index) => ({
-			profileId: p.profileId || '',
+			profileId: p.profileId || crypto.randomUUID(),
 			teamId: this.gameMode === 'coop-vs-ai' || this.gameMode === 'coop-vs-coop'
 				? (index === 0 || index === 2 ? 0 : 1)
 				: undefined,
@@ -780,30 +793,18 @@ const SEATS_TEAMS: [number[], number[]] = [
 			isWinner: result.winnerId === String(index)
 		}));
 
-		// Filter out players without profile IDs only log a warning
-		const validParticipants = participants.filter((p) => p.profileId);
-
-		if (validParticipants.length < 4) {
-			console.warn(
-				`[GapleRoom] Submitting match with only ${validParticipants.length}/4 profileIds`
-			);
-			// Still submit with whatever profileIds we have
-		}
-
-		if (validParticipants.length === 0) {
-			console.warn('[GapleRoom] No profileIds available, skipping match submission');
-			return;
-		}
-
 		try {
 			const response = await fetch(`${this.apiBaseUrl}/api/match/submit`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					[PARTYKIT_INTERNAL_HEADER]: this.internalToken
+				},
 				body: JSON.stringify({
 					roomId: this.room.id,
 					mode: this.gameMode,
 					durationSeconds,
-					participants: validParticipants
+					participants
 				})
 			});
 

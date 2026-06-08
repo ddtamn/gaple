@@ -42,10 +42,10 @@ export function hasLegalMove(state: GameState, playerId: string): boolean {
 	return generateLegalMoves(state, playerId).length > 0;
 }
 
-export function createMoveEvent(move: Move) {
+export function createMoveEvent(move: Move, tile?: { left: number; right: number }) {
 	return {
 		type: 'MOVE_PLAYED' as const,
-		payload: move as unknown as Record<string, unknown>,
+		payload: { ...move, ...(tile ? { tile } : {}) } as unknown as Record<string, unknown>,
 		timestamp: Date.now()
 	};
 }
@@ -62,6 +62,32 @@ export function createGameOverEvent(playerId: string, reason = 'empty-hand') {
 	return {
 		type: 'GAME_OVER' as const,
 		payload: { playerId, reason },
+		timestamp: Date.now()
+	};
+}
+
+export function createPointsAwardedEvent(
+	playerId: string,
+	points: number,
+	reason: string,
+	targetPlayerId?: string
+) {
+	return {
+		type: 'POINTS_AWARDED' as const,
+		payload: { playerId, points, reason, targetPlayerId },
+		timestamp: Date.now()
+	};
+}
+
+export function createRoundScoredEvent(
+	winnerId: string,
+	points: number,
+	winType: string,
+	reason: string
+) {
+	return {
+		type: 'ROUND_SCORED' as const,
+		payload: { winnerId, points, winType, reason },
 		timestamp: Date.now()
 	};
 }

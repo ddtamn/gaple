@@ -86,6 +86,7 @@ export function replayFromMoves(config: ReplayConfig): GameState {
 		lastPlayedTile: null,
 		lastPlayerId: null,
 		lastMoveWasCekik: false,
+		passHints: {},
 		teamConfig
 	};
 
@@ -168,7 +169,7 @@ export function replayFromMoves(config: ReplayConfig): GameState {
 			p.id === currentPlayer.id ? { ...p, hand: removed.hand } : p
 		);
 		state.history = [...state.history, move];
-		state.turnIndex = (state.turnIndex + 1) % state.players.length;
+		state.turnIndex = isFinished ? state.turnIndex : (state.turnIndex + 1) % state.players.length;
 		state.lastPlayedTile = removed.tile;
 		state.lastPlayerId = currentPlayer.id;
 		state.lastMoveWasCekik = isCecek;

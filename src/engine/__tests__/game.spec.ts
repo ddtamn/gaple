@@ -118,7 +118,7 @@ describe('Domino engine', () => {
 		expect(success).toBe(true);
 		expect(game.state.result?.winnerId).toBe(game.currentPlayer.id);
 		expect(game.state.result?.reason).toBe('empty-hand');
-		expect(game.events.at(-1)?.type).toBe('GAME_OVER');
+		expect(game.events.at(-1)?.type).toBe('ROUND_SCORED');
 	});
 
 	it('ends a blocked game with the lowest hand score as winner', () => {
@@ -149,6 +149,67 @@ describe('Domino engine', () => {
 		expect(game.state.result?.winnerId).toBe('0');
 		expect(game.state.result?.reason).toBe('blocked');
 		expect(game.state.result?.scores['0']).toBe(1);
-		expect(game.events.at(-1)?.type).toBe('GAME_OVER');
+		expect(game.events.at(-1)?.type).toBe('ROUND_SCORED');
+	});
+
+	it('stores the relevant board ends for a passing player', () => {
+		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
+		game.startGame();
+
+		game.state = {
+			...game.state,
+			board: {
+				playedTiles: [{ id: 'mid', left: 3, right: 4 }],
+				leftEnd: 3,
+				rightEnd: 4,
+				initialTileIndex: 0,
+				requiresStarterTile: true
+			},
+			players: game.state.players.map((player, index) =>
+				index === game.turnIndex
+					? { ...player, hand: [{ id: 'safe', left: 0, right: 0 }] }
+					: player
+			)
+		};
+
+		const playerId = game.currentPlayer.id;
+		const success = game.passTurn(playerId);
+
+		expect(success).toBe(true);
+		expect(game.state.passHints?.[playerId]?.values).toEqual([3, 4]);
+		expect(game.state.passHints?.[playerId]?.leftEnd).toBe(3);
+		expect(game.state.passHints?.[playerId]?.rightEnd).toBe(4);
+	});
+
+	it('keeps earlier pass hint values when the board changes later in the round', () => {
+		const game = new GameManager(['A', 'B', 'C', 'D'], 'test-seed');
+		game.startGame();
+
+		const playerId = game.currentPlayer.id;
+		game.state = {
+			...game.state,
+			passHints: {
+				[playerId]: {
+					values: [2],
+					leftEnd: 2,
+					rightEnd: 4
+				}
+			},
+			board: {
+				playedTiles: [{ id: 'second', left: 4, right: 4 }],
+				leftEnd: 4,
+				rightEnd: 4,
+				initialTileIndex: 0,
+				requiresStarterTile: true
+			},
+			players: game.state.players.map((player, index) =>
+				index === game.turnIndex
+					? { ...player, hand: [{ id: 'gap-2', left: 1, right: 1 }] }
+					: player
+			)
+		};
+
+		expect(game.passTurn(playerId)).toBe(true);
+		expect(game.state.passHints?.[playerId]?.values).toEqual([2, 4]);
 	});
 });

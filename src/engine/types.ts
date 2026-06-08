@@ -41,7 +41,13 @@ export interface GameResult {
 	winType?: string; // Palang, Cekik, Normal, Tangkap, Mutlak
 }
 
-export type GameEventType = 'MOVE_PLAYED' | 'PLAYER_PASS' | 'GAME_OVER' | 'ROUND_SCORED';
+export interface PassHint {
+	values: number[];
+	leftEnd: number | null;
+	rightEnd: number | null;
+}
+
+export type GameEventType = 'MOVE_PLAYED' | 'PLAYER_PASS' | 'GAME_OVER' | 'ROUND_SCORED' | 'POINTS_AWARDED';
 
 export interface GameEvent {
 	type: GameEventType;
@@ -69,6 +75,7 @@ export interface GameState {
 	lastPlayedTile?: Domino | null;
 	lastPlayerId?: string | null;
 	lastMoveWasCekik?: boolean;
+	passHints?: Record<PlayerId, PassHint>;
 	pointStandings: Record<string, number>; // all round point
 	teamConfig?: TeamConfig;
 }

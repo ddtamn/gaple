@@ -1,4 +1,15 @@
-import type { Domino, GameResult, GameState, Move, Player, TeamConfig, TeamId } from './types';
+import type {
+	Board,
+	Domino,
+	GameEvent,
+	GameResult,
+	GameState,
+	Move,
+	Player,
+	TeamConfig,
+	TeamId,
+	PassHint
+} from './types';
 import { createBoard, playTile } from './board';
 import { createDomino } from './domino';
 import { createPlayer, receiveTiles, removeTile } from './player';
@@ -13,6 +24,8 @@ import {
 	createGameOverEvent,
 	createMoveEvent,
 	createPassEvent,
+	createPointsAwardedEvent,
+	createRoundScoredEvent,
 	generateLegalMoves,
 	isValidMove
 } from './moves';
@@ -37,6 +50,45 @@ function countDoubles(hand: Domino[]): number {
 
 function hasTooManyDoubles(players: Player[]): boolean {
 	return players.some((player) => countDoubles(player.hand) >= 5);
+}
+
+function createPassHint(board: Board): PassHint | null {
+	if (board.playedTiles.length === 0) {
+		if (!board.requiresStarterTile) return null;
+		return {
+			values: [3],
+			leftEnd: 3,
+			rightEnd: 3
+		};
+	}
+
+	const values = [board.leftEnd, board.rightEnd].filter((value): value is number => value !== null);
+	const uniqueValues = [...new Set(values)];
+	if (uniqueValues.length === 0) return null;
+
+	return {
+		values: uniqueValues,
+		leftEnd: board.leftEnd,
+		rightEnd: board.rightEnd
+	};
+}
+
+function mergePassHint(existing: PassHint | undefined, next: PassHint | null): PassHint | undefined {
+	if (!next) return existing;
+	if (!existing) return next;
+
+	const mergedValues = [...existing.values];
+	for (const value of next.values) {
+		if (!mergedValues.includes(value)) {
+			mergedValues.push(value);
+		}
+	}
+
+	return {
+		values: mergedValues,
+		leftEnd: next.leftEnd,
+		rightEnd: next.rightEnd
+	};
 }
 
 function createPlayers(names: string[], teamConfig?: TeamConfig): Player[] {
@@ -108,6 +160,7 @@ export function createGameState(
 		lastPlayedTile: null,
 		lastPlayerId: null,
 		lastMoveWasCekik: false,
+		passHints: {},
 		teamConfig
 	};
 }
@@ -215,16 +268,28 @@ export class GameManager {
 			};
 		}
 
+		const events: GameEvent[] = [
+			...this.state.events,
+			createMoveEvent(move, result.tile),
+			...(gameResult
+				? [
+						createGameOverEvent(currentPlayer.id, gameResult.reason),
+						createRoundScoredEvent(
+							gameResult.winnerId,
+							gameResult.points ?? 1,
+							gameResult.winType ?? 'Normal',
+							gameResult.reason
+						)
+					]
+				: [])
+		];
+
 		this.state = {
 			...this.state,
 			players: newPlayers,
 			board: placedBoard,
 			history: [...this.state.history, move],
-			events: [
-				...this.state.events,
-				createMoveEvent(move),
-				...(gameResult ? [createGameOverEvent(currentPlayer.id, gameResult.reason)] : [])
-			],
+			events,
 			result: gameResult,
 			pointStandings: newStandings,
 			lastPlayedTile: result.tile,
@@ -252,17 +317,27 @@ export class GameManager {
 		}
 
 		const newStandings = { ...this.state.pointStandings };
+		const passHint = createPassHint(this.state.board);
+		const mergedPassHint = mergePassHint(this.state.passHints?.[playerId], passHint);
 
 		// Cekik: tambahkan 1 poin ke pemain yang membuat lawan pass
+		let cekikEvents: ReturnType<typeof createPointsAwardedEvent>[] = [];
 		if (this.state.lastPlayerId) {
 			newStandings[this.state.lastPlayerId] = (newStandings[this.state.lastPlayerId] || 0) + 1;
+			cekikEvents.push(
+				createPointsAwardedEvent(this.state.lastPlayerId, 1, 'cekik', playerId)
+			);
 		}
 
 		const nextTurnIndex = (this.state.turnIndex + 1) % this.players.length;
 		const stateAfterPass: GameState = {
 			...this.state,
 			pointStandings: newStandings,
-			events: [...this.state.events, createPassEvent(playerId)],
+			events: [...this.state.events, createPassEvent(playerId), ...cekikEvents],
+			passHints:
+				mergedPassHint !== undefined
+					? { ...this.state.passHints, [playerId]: mergedPassHint }
+					: this.state.passHints,
 			turnIndex: nextTurnIndex
 		};
 
@@ -292,7 +367,13 @@ export class GameManager {
 				turnIndex: stateAfterPass.players.findIndex((player) => player.id === gameResult.winnerId),
 				events: [
 					...stateAfterPass.events,
-					createGameOverEvent(gameResult.winnerId, gameResult.reason)
+					createGameOverEvent(gameResult.winnerId, gameResult.reason),
+					createRoundScoredEvent(
+						gameResult.winnerId,
+						gameResult.points ?? 1,
+						gameResult.winType ?? 'Gab',
+						gameResult.reason
+					)
 				]
 			};
 			return true;

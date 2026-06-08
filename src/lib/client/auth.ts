@@ -1,5 +1,7 @@
-import { createAuthClient } from 'better-auth/client';
+import { createAuthClient } from 'better-auth/svelte';
+import { magicLinkClient } from 'better-auth/client/plugins';
 
 export const authClient = createAuthClient({
-	baseURL: typeof window !== 'undefined' ? window.location.origin : undefined
+	baseURL: typeof window !== 'undefined' ? window.location.origin : undefined,
+	plugins: [magicLinkClient()]
 });

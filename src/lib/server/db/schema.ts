@@ -44,7 +44,7 @@ export const account = sqliteTable('account', {
 // Tabel profiles menyatukan Player (Human) dan AI (Bot)
 export const profiles = sqliteTable('profiles', {
 	id: text('id').primaryKey(), // UUID generated in application code
-	userId: text('user_id').references(() => user.id), // Nullable. Jika null, berarti dia adalah AI/Bot.
+	userId: text('user_id').unique().references(() => user.id), // Nullable. Jika null, berarti dia adalah AI/Bot.
 	name: text('name').notNull(),
 	isBot: integer('is_bot', { mode: 'boolean' }).default(false).notNull(),
 	isActive: integer('is_active', { mode: 'boolean' }).default(false).notNull(), // Lock untuk AI yang sedang main

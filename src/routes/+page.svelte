@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { authClient } from '$lib/client/auth';
 	import GameArea from '$lib/components/GameArea.svelte';
 	import LobbyRoom from '$lib/components/LobbyRoom.svelte';
 	import { getMultiplayer } from '$lib/multiplayer/room.svelte';
@@ -12,6 +13,8 @@
 	let selectedRounds = $state<Rounds>(null);
 
 	const mp = getMultiplayer();
+	const session = authClient.useSession();
+	const currentUser = $derived($session.data?.user ?? null);
 
 	function goToSetup() {
 		currentView = 'setup-mode';
@@ -57,6 +60,12 @@
 				>
 					Main Domi
 				</h1>
+				{#if currentUser}
+					<div class="mt-2 inline-flex items-center gap-2 rounded-full border border-stone-700 bg-background/80 px-4 py-2 text-sm text-stone-300">
+						<span class="size-2 rounded-full bg-emerald-400"></span>
+						Masuk sebagai {currentUser.name}
+					</div>
+				{/if}
 			</div>
 
 			<div class="flex w-64 flex-col gap-4">

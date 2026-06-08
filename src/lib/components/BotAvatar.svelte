@@ -1,4 +1,6 @@
 <script lang="ts">
+	import PassHintBadge from './PassHintBadge.svelte';
+
 	type AvatarSize = 'sm' | 'md';
 
 	interface Props {
@@ -8,9 +10,18 @@
 		winCount: number;
 		showScore?: boolean;
 		size?: AvatarSize;
+		passHintValues?: number[];
 	}
 
-	let { player, isMyTurn, isMarked, winCount, showScore = true, size = 'md' }: Props = $props();
+	let {
+		player,
+		isMyTurn,
+		isMarked,
+		winCount,
+		showScore = true,
+		size = 'md',
+		passHintValues = []
+	}: Props = $props();
 
 	const sizeClass = $derived(
 		size === 'sm'
@@ -35,6 +46,7 @@
 	{/if}
 
 	<div class="relative">
+		<PassHintBadge values={passHintValues} />
 		<img
 			src="https://api.dicebear.com/9.x/bottts/svg?seed={player.name}"
 			alt="Avatar AI"

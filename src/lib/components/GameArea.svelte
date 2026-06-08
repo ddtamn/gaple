@@ -13,8 +13,12 @@
 	import DominoTile from './DominoTile.svelte';
 	import PlacementGhost from './PlacementGhost.svelte';
 	import BotAvatar from './BotAvatar.svelte';
+	import PassHintBadge from './PassHintBadge.svelte';
 	import PlayerHand from './PlayerHand.svelte';
 	import MainPlayerHand from './MainPlayerHand.svelte';
+	import AnimationLayer from './animation/AnimationLayer.svelte';
+	import { GameAnimationController } from '$lib/animation/gameAnimationController.svelte';
+	import { registerAnchor } from '$lib/animation/domAnchors';
 
 	// PROPS DARI LOBI
 	let {
@@ -313,6 +317,54 @@
 		return lastPassEvent.timestamp;
 	}
 
+	function getPassHintValues(playerIndex: number): number[] {
+		const player = currentGameState?.players[playerIndex];
+		if (!player) return [];
+		return currentGameState?.passHints?.[player.id]?.values ?? [];
+	}
+
+
+	// ── Animation Controller ────────────────────────────────────────────
+	let animController = $state(new GameAnimationController());
+
+	// Init display scores on mount and when re-initializing
+	$effect(() => {
+		if (currentGameState) {
+			animController.initScores(currentGameState.pointStandings);
+		}
+	});
+
+	// Process events for animation
+	$effect(() => {
+		const events = currentGameState?.events;
+		const players = currentGameState?.players;
+		if (!events || !players) return;
+		animController.processEvents(events, players);
+	});
+
+	// Detect round result and enqueue stamp/score animation
+	$effect(() => {
+		const result = currentGameState?.result;
+		if (!result || !currentGameState) return;
+		const winner = currentGameState.players.find((p) => p.id === result.winnerId);
+		if (!winner) return;
+		animController.enqueueRoundResult(
+			result.winnerId,
+			winner.name,
+			result.points ?? 1,
+			result.winType ?? 'Normal',
+			currentGameState.pointStandings
+		);
+	});
+
+	// Capture move source position for flying tile animation
+	function captureMoveSource(tileId: string, el?: HTMLElement | null) {
+		const pos = animController.captureMoveSource(tileId, el);
+		if (pos) {
+			animController.storeMoveSource(tileId, pos);
+		}
+	}
+
 	function handleReplay() {
 		if (isMultiplayer) {
 			onExit();
@@ -321,6 +373,7 @@
 			game = null;
 			currentRound = 1;
 		}
+		animController.reset();
 	}
 
 // ── Team Scores (Coop Mode) ──────────────────────────────────────
@@ -572,18 +625,28 @@
 	onmouseup={onWindowMouseUp}
 	ontouchmove={onWindowTouchMove}
 	ontouchend={onWindowTouchEnd}
-/>
+/>	<!-- Dragged tile follow-mouse overlay -->
+	{#if isDragging && draggedTile}
+		<div
+			transition:fade={{ duration: 200 }}
+			class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 scale-110 rotate-3 opacity-80"
+			style="left:{mouseX}px; top:{mouseY}px;"
+		>
+			<DominoTile tile={draggedTile} isVertical={false} />
+		</div>
+	{/if}
 
-<!-- Dragged tile follow-mouse overlay -->
-{#if isDragging && draggedTile}
-	<div
-		transition:fade={{ duration: 200 }}
-		class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 scale-110 rotate-3 opacity-80"
-		style="left:{mouseX}px; top:{mouseY}px;"
-	>
-		<DominoTile tile={draggedTile} isVertical={false} />
-	</div>
-{/if}
+	<!-- Animation overlay layer (fixed, pointer-events-none) -->
+	<AnimationLayer controller={animController} />
+
+	<!-- score anchors for animation targets -->
+	{#each currentGameState?.players ?? [] as p}
+		<div
+			data-score-anchor={p.id}
+			class="pointer-events-none fixed z-0 opacity-0"
+			style="left:0; top:0; width:1px; height:1px;"
+		></div>
+	{/each}
 
 <!-- ══════════════════ MAIN FLEXBOX LAYOUT ══════════════════ -->
 <div
@@ -688,14 +751,17 @@
 			{@const leftPlayer = p(3)}
 			{@const leftTurnIndex = (myPlayerIndex + 3) % 4}
 			{@const leftPassTs = getPassTimestamp(leftTurnIndex)}
+			{@const leftPassHintValues = getPassHintValues(leftTurnIndex)}
 			{@const leftCountdown = getCountdownForPlayer(leftTurnIndex)}
 			{@const topPlayer = p(2)}
 			{@const topTurnIndex = (myPlayerIndex + 2) % 4}
 			{@const topPassTs = getPassTimestamp(topTurnIndex)}
+			{@const topPassHintValues = getPassHintValues(topTurnIndex)}
 			{@const topCountdown = getCountdownForPlayer(topTurnIndex)}
 			{@const rightPlayer = p(1)}
 			{@const rightTurnIndex = (myPlayerIndex + 1) % 4}
 			{@const rightPassTs = getPassTimestamp(rightTurnIndex)}
+			{@const rightPassHintValues = getPassHintValues(rightTurnIndex)}
 			{@const rightCountdown = getCountdownForPlayer(rightTurnIndex)}
 			<!-- Spread opponents across the row: left / top / right with generous gaps -->
 			<div class="flex w-full">
@@ -707,9 +773,10 @@
 							player={leftPlayer}
 							isMyTurn={currentGameState.turnIndex === leftTurnIndex}
 							isMarked={markerPlayerId === leftPlayer.id}
-							winCount={currentGameState.pointStandings[leftPlayer.id] || 0}
+							winCount={animController.displayScores[leftPlayer.id] ?? (currentGameState.pointStandings[leftPlayer.id] || 0)}
 							showScore={!isCoopMode}
 							size="sm"
+							passHintValues={leftPassHintValues}
 						/>
 						{#if leftPassTs > 0 || leftCountdown > 0}
 							<div class="flex flex-col gap-1">
@@ -763,9 +830,10 @@
 							player={topPlayer}
 							isMyTurn={currentGameState.turnIndex === topTurnIndex}
 							isMarked={markerPlayerId === topPlayer.id}
-							winCount={currentGameState.pointStandings[topPlayer.id] || 0}
+							winCount={animController.displayScores[topPlayer.id] ?? (currentGameState.pointStandings[topPlayer.id] || 0)}
 							showScore={!isCoopMode}
 							size="sm"
+							passHintValues={topPassHintValues}
 						/>
 						{#if topPassTs > 0 || topCountdown > 0}
 							<div class="flex flex-col gap-1">
@@ -819,9 +887,10 @@
 							player={rightPlayer}
 							isMyTurn={currentGameState.turnIndex === rightTurnIndex}
 							isMarked={markerPlayerId === rightPlayer.id}
-							winCount={currentGameState.pointStandings[rightPlayer.id] || 0}
+							winCount={animController.displayScores[rightPlayer.id] ?? (currentGameState.pointStandings[rightPlayer.id] || 0)}
 							showScore={!isCoopMode}
 							size="sm"
+							passHintValues={rightPassHintValues}
 						/>
 						{#if rightPassTs > 0 || rightCountdown > 0}
 							<div class="flex flex-col gap-1">
@@ -898,9 +967,11 @@
 					{#each boardLayout as tile (tile.id)}
 						{@const isVertical = tile.rotation % 180 !== 0}
 						{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
+						{@const isHidden = animController.hiddenBoardTileIds.has(tile.id)}
 						<div
-							class="absolute transition-all duration-500 ease-out"
+							class="absolute transition-all duration-500 ease-out {isHidden ? 'invisible' : ''}"
 							style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
+							data-board-tile-id={tile.id}
 						>
 							<DominoTile {tile} {isVertical} />
 						</div>
@@ -968,21 +1039,25 @@
 		class="shrink-0 pb-2 pt-1 md:pb-4"
 	>
 		{#if currentGameState}
-			{@const mainPlayer = p(0)}
-			{#if mainPlayer}					<!-- Main player avatar + info panel (PASS, countdown, score) -->
-				{@const mainCountdown = getCountdownForPlayer(myPlayerIndex)}
-				{@const mainPassTs = getPassTimestamp(myPlayerIndex)}
-				{@const mainScore = currentGameState.pointStandings[mainPlayer.id] || 0}
-				<div class="mb-2 flex items-center justify-center gap-3">
-					<!-- Avatar box -->
-					<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
-						<img
-							src="https://api.dicebear.com/9.x/bottts/svg?seed={mainPlayer.name}&backgroundColor=78350f"
-							alt="Avatar"
-							class="h-7 w-7 rounded-full bg-stone-800 object-cover ring-2 ring-stone-600"
-						/>
-						<span class="font-body text-sm font-semibold text-stone-100">{mainPlayer.name}</span>
-					</div>
+				{@const mainPlayer = p(0)}
+				{#if mainPlayer}					<!-- Main player avatar + info panel (PASS, countdown, score) -->
+					{@const mainCountdown = getCountdownForPlayer(myPlayerIndex)}
+					{@const mainPassTs = getPassTimestamp(myPlayerIndex)}
+					{@const mainPassHintValues = getPassHintValues(myPlayerIndex)}
+					{@const mainScore = currentGameState.pointStandings[mainPlayer.id] || 0}
+					<div class="mb-2 flex items-center justify-center gap-3">
+						<!-- Avatar box -->
+						<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
+							<div class="relative">
+								<PassHintBadge values={mainPassHintValues} />
+								<img
+									src="https://api.dicebear.com/9.x/bottts/svg?seed={mainPlayer.name}&backgroundColor=78350f"
+									alt="Avatar"
+									class="h-7 w-7 rounded-full bg-stone-800 object-cover ring-2 ring-stone-600"
+								/>
+							</div>
+							<span class="font-body text-sm font-semibold text-stone-100">{mainPlayer.name}</span>
+						</div>
 
 					<!-- Info panel: PASS / countdown / score -->
 					<div class="flex items-center gap-2">
@@ -1014,23 +1089,29 @@
 							</div>
 						{/if}
 					</div>
-				</div>
-				<MainPlayerHand
-					player={mainPlayer}
-					isMyTurn={currentGameState.turnIndex === myPlayerIndex}
-					isMain={true}
-					isMarked={markerPlayerId === mainPlayer.id}
-					winCount={currentGameState.pointStandings[mainPlayer.id] || 0}
-					playableTileIds={new Set(
-						generateLegalMoves(currentGameState, mainPlayer.id).map((m) => m.tileId)
-					)}
-					activeTileId={activeTile?.id ?? null}
-					selectedTileId={selectedTile?.id ?? null}
-					ondragstart={handleTileDragStart}
-					ontileclick={handleTileClick}
-					{game}
-					{currentGameState}
-				/>
+				</div>						<MainPlayerHand
+							player={mainPlayer}
+							isMyTurn={currentGameState.turnIndex === myPlayerIndex}
+							isMain={true}
+							isMarked={markerPlayerId === mainPlayer.id}
+							winCount={currentGameState.pointStandings[mainPlayer.id] || 0}
+							playableTileIds={new Set(
+								generateLegalMoves(currentGameState, mainPlayer.id).map((m) => m.tileId)
+							)}
+							activeTileId={activeTile?.id ?? null}
+							selectedTileId={selectedTile?.id ?? null}
+							ondragstart={handleTileDragStart}
+							ontileclick={handleTileClick}
+							onCaptureMoveSource={captureMoveSource}
+							{game}
+							{currentGameState}
+						/>
+						<!-- score anchor for main player -->
+						<div
+							data-score-anchor={mainPlayer.id}
+							class="pointer-events-none fixed z-0 opacity-0"
+							style="left:0; top:0; width:1px; height:1px;"
+						></div>
 			{/if}
 		{/if}
 	</div>

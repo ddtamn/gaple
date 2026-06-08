@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { env } from '$env/dynamic/public';
+	import { authClient } from '$lib/client/auth';
 	import { getMultiplayer } from '$lib/multiplayer/room.svelte';
 
 	let {
@@ -17,6 +18,9 @@
 	} = $props();
 
 	const mp = getMultiplayer();
+	const session = authClient.useSession();
+	const profileId = $derived(($session.data as { profileId?: string } | null)?.profileId ?? '');
+	const isSignedIn = $derived(Boolean(profileId));
 
 	const seatLabels = ['Bawah', 'Kanan', 'Atas', 'Kiri'];
 
@@ -105,7 +109,7 @@
 	function createRoom() {
 		const name = playerName.trim() || 'Player';
 		const code = roomCode.trim() || generateRoomCode();
-		mp.connect(host, code, name, mode, rounds, getApiUrl());
+		mp.connect(host, code, name, mode, rounds, getApiUrl(), profileId);
 		roomCreated = true;
 	}
 
@@ -113,7 +117,7 @@
 		const name = playerName.trim() || 'Player';
 		const code = joinCodeInput.trim().toUpperCase();
 		if (code.length < 4) return;
-		mp.connect(host, code, name, undefined, undefined, getApiUrl());
+		mp.connect(host, code, name, undefined, undefined, getApiUrl(), profileId);
 		roomCreated = true;
 	}
 
@@ -141,6 +145,17 @@
 {#if !roomCreated}
 	<!-- Create / Join Room -->
 	<div class="z-10 flex w-full max-w-md flex-col items-center gap-6 px-4">
+		{#if !isSignedIn}
+			<div class="w-full rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+				Untuk membuat atau bergabung ke room multiplayer, kamu perlu sign in dulu supaya profile pemain tersimpan ke leaderboard dan match history.
+				<div class="mt-3">
+					<a href="/auth" class="inline-flex rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary-hover">
+						Sign in sekarang
+					</a>
+				</div>
+			</div>
+		{/if}
+
 		<div class="relative w-full text-center">
 			<button
 				onclick={onBack}
@@ -221,7 +236,8 @@
 
 				<button
 					onclick={createRoom}
-					class="w-full rounded-lg bg-primary px-6 py-3.5 font-body text-base font-semibold text-white transition hover:bg-primary-hover active:scale-[0.98]"
+					disabled={!isSignedIn}
+					class="w-full rounded-lg bg-primary px-6 py-3.5 font-body text-base font-semibold text-white transition hover:bg-primary-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					Buat Room
 				</button>
@@ -243,7 +259,7 @@
 				</div>
 				<button
 					onclick={joinRoom}
-					disabled={joinCodeInput.trim().length < 4}
+					disabled={joinCodeInput.trim().length < 4 || !isSignedIn}
 					class="w-full rounded-lg bg-primary px-6 py-3.5 font-body text-base font-semibold text-white transition hover:bg-primary-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					Gabung

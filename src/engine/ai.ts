@@ -8,18 +8,26 @@ import { playout } from './ai/playout';
 import { biasTileWeights, createBelief } from './ai/belief';
 import { estimateHiddenHandWeight } from './ai/inference';
 import { shouldUseEndgameSolver, solveEndgameMove } from './ai/endgame';
+import {
+	applyPersonaScoreBias,
+	getPersonaProfile,
+	normalizePersona,
+	type AiPersona
+} from './ai/personas';
 
-const ITERATIONS_PER_MOVE = 350;
-const MAX_PLAYOUT_TURNS = 120;
+const ITERATIONS_PER_MOVE = 96;
+const MAX_PLAYOUT_TURNS = 90;
 
 export interface AiMoveOptions {
 	seed?: string;
 	iterations?: number;
 	maxPlayoutTurns?: number;
+	persona?: AiPersona;
 	/** IDs of human players whose hands are visible to the AI. Defaults to ['0']. */
 	humanPlayerIds?: string[];
 	/** Optional time limit in milliseconds. If exceeded, AI returns the best move found so far. */
 	timeLimitMs?: number;
+	debug?: boolean;
 }
 
 export interface AiMoveConfig {
@@ -98,9 +106,12 @@ export function selectAiMove(
 	options: AiMoveOptions = {}
 ): Move | null {
 	const config = createAiConfig(options);
-	const rng = createSeededRng(config.seed);
+	const persona = normalizePersona(options.persona);
+	const personaProfile = getPersonaProfile(persona);
+	const rng = createSeededRng(`${config.seed}:${personaProfile.seedSuffix}`);
 	const knownPlayerIds = new Set([playerId, ...(options.humanPlayerIds ?? ['0'])]);
 	const legalMoves = generateLegalMoves(state, playerId);
+	const effectiveIterations = Math.max(1, Math.round(config.iterations * personaProfile.iterationsMultiplier));
 
 	if (legalMoves.length === 0) return null;
 	if (legalMoves.length === 1) return legalMoves[0];
@@ -125,7 +136,9 @@ export function selectAiMove(
 	for (const move of legalMoves) {
 		// Check time limit at the start of each move evaluation
 		if (timeLimitMs > 0 && Date.now() - startTime > timeLimitMs) {
-			console.log(`[AI ${playerId}] Time budget exceeded (${timeLimitMs}ms), returning best move so far`);
+			if (options.debug) {
+				console.log(`[AI ${playerId}] Time budget exceeded (${timeLimitMs}ms), returning best move so far`);
+			}
 			break;
 		}
 		const tacticalScore = scoreTacticalMove(state, move, playerId);
@@ -135,7 +148,7 @@ export function selectAiMove(
 
 		let playoutScore = 0;
 
-		for (let i = 0; i < config.iterations; i++) {
+		for (let i = 0; i < effectiveIterations; i++) {
 			const simState = determinizeState(state, playerId, knownPlayerIds, rng);
 			const simManager = new GameManager(simState.players.map((player) => player.name));
 			simManager.state = simState;
@@ -148,10 +161,13 @@ export function selectAiMove(
 			}
 		}
 
-		const averageScore = playoutScore / config.iterations + tacticalScore * 2.75;
-		console.log(
-			`[AI ${playerId}] ${summarizeMove(state, move)}: taktis ${tacticalScore.toFixed(1)}, skor ${averageScore.toFixed(2)}${teamId !== undefined ? ` tim=${teamId}` : ''}`
-		);
+		const averageScore =
+			playoutScore / effectiveIterations + applyPersonaScoreBias(persona, state, move, tacticalScore * 2.75);
+		if (options.debug) {
+			console.log(
+				`[AI ${playerId}] ${summarizeMove(state, move)}: taktis ${tacticalScore.toFixed(1)}, skor ${averageScore.toFixed(2)}${teamId !== undefined ? ` tim=${teamId}` : ''}`
+			);
+		}
 
 		if (averageScore > highestScore) {
 			highestScore = averageScore;

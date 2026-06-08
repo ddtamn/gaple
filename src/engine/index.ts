@@ -9,3 +9,6 @@ export * from './boardLayout';
 export * from './scoring';
 export * from './teams';
 export * from './replay';
+export * from './ai/selfPlay';
+export * from './ai/benchmark';
+export * from './ai/personas';

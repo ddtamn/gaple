@@ -16,7 +16,11 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"partykit": "partykit",
-		"partykit:dev": "partykit dev"
+		"partykit:dev": "partykit dev",
+		"ai:self-play": "tsx scripts/self-play.ts",
+		"ai:self-play:quick": "tsx scripts/self-play.ts --persona all --games 1000 --iterations 24 --max-moves 80",
+		"ai:benchmark": "tsx scripts/benchmark-ai.ts",
+		"ai:benchmark:quick": "tsx scripts/benchmark-ai.ts --seeds 20 --iterations 64 --max-moves 80"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

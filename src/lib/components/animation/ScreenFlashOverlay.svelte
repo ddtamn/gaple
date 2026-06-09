@@ -14,12 +14,15 @@
 
 	onMount(() => {
 		const controller = new AbortController();
+		const c = color;
+		const pk = peak;
+		const dur = duration;
 		runAnimation({
-			duration,
+			duration: dur,
 			easing: easeOutCubic,
-			signal: controller.signal,
+			abortSignal: controller.signal,
 			onUpdate: (p) => {
-				opacity = peak * (1 - p);
+				opacity = pk * (1 - p);
 			}
 		});
 		return () => controller.abort();

@@ -32,7 +32,13 @@
 		container.style.zIndex = '40';
 		document.body.appendChild(container);
 
-		const particles: Particle[] = Array.from({ length: PARTICLE_COUNT }, () => {
+		// Capture props at mount time — confetti is one-shot
+		const cx = centerX;
+		const cy = centerY;
+		const dur = duration;
+		const count = intensity === 'epic' ? 64 : PARTICLE_COUNT;
+
+		const particles: Particle[] = Array.from({ length: count }, () => {
 			const angle = Math.random() * Math.PI * 2;
 			const distance = 80 + Math.random() * 180;
 			return {
@@ -47,8 +53,8 @@
 		const els: HTMLDivElement[] = particles.map((p) => {
 			const el = document.createElement('div');
 			el.style.position = 'absolute';
-			el.style.left = `${centerX}px`;
-			el.style.top = `${centerY}px`;
+			el.style.left = `${cx}px`;
+			el.style.top = `${cy}px`;
 			el.style.width = `${p.size}px`;
 			el.style.height = `${p.size * 0.4}px`;
 			el.style.background = p.color;
@@ -61,9 +67,9 @@
 
 		const controller = new AbortController();
 		runAnimation({
-			duration,
+			duration: dur,
 			easing: easeOutCubic,
-			signal: controller.signal,
+			abortSignal: controller.signal,
 			onUpdate: (p) => {
 				for (let i = 0; i < particles.length; i++) {
 					const part = particles[i];
@@ -71,8 +77,8 @@
 					const radialX = Math.cos(part.angle) * part.distance * p;
 					const radialY = Math.sin(part.angle) * part.distance * p;
 					const gravity = p * p * GRAVITY;
-					const x = centerX + radialX;
-					const y = centerY + radialY + gravity;
+					const x = cx + radialX;
+					const y = cy + radialY + gravity;
 					const rot = part.rotation * p;
 					const op = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
 					el.style.left = `${x}px`;

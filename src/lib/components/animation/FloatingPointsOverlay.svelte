@@ -19,13 +19,18 @@
 
 	onMount(() => {
 		const controller = new AbortController();
+		// Capture props at mount time — overlay is one-shot, props are stable for its lifetime
+		const fx = fromX,
+			fy = fromY,
+			tx = toX,
+			ty = toY;
 		runAnimation({
 			duration: 500,
 			easing: easeOutCubic,
-			signal: controller.signal,
+			abortSignal: controller.signal,
 			onUpdate: (p) => {
-				x = fromX + (toX - fromX) * p;
-				y = fromY + (toY - fromY) * p;
+				x = fx + (tx - fx) * p;
+				y = fy + (ty - fy) * p;
 				scale = 1.3 - 0.5 * p;
 				opacity = p < 0.15 ? p / 0.15 : p > 0.85 ? (1 - p) / 0.15 : 1;
 			}

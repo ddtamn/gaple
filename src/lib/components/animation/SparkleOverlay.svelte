@@ -23,10 +23,11 @@
 
 	onMount(() => {
 		const controller = new AbortController();
+		const dur = duration;
 		runAnimation({
-			duration,
+			duration: dur,
 			easing: easeOutCubic,
-			signal: controller.signal,
+			abortSignal: controller.signal,
 			onUpdate: (p) => {
 				progress = p;
 			}

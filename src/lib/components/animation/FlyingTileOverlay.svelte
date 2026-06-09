@@ -28,14 +28,20 @@
 
 	onMount(() => {
 		const controller = new AbortController();
+		// Capture props at mount time — flying tile is one-shot
+		const fx = fromX,
+			fy = fromY,
+			tx = toX,
+			ty = toY,
+			rot0 = rotation;
 		runAnimation({
 			duration,
 			easing: easeOutCubic,
-			signal: controller.signal,
+			abortSignal: controller.signal,
 			onUpdate: (p) => {
-				x = fromX + (toX - fromX) * p;
-				y = fromY + (toY - fromY) * p - Math.sin(p * Math.PI) * ARC_HEIGHT;
-				rot = rotation * TILT_OVERSHOOT * (1 - p);
+				x = fx + (tx - fx) * p;
+				y = fy + (ty - fy) * p - Math.sin(p * Math.PI) * ARC_HEIGHT;
+				rot = rot0 * TILT_OVERSHOOT * (1 - p);
 				scale = 1.15 - 0.15 * p;
 				opacity = Math.min(1, p * 4);
 			}

@@ -7,7 +7,7 @@
  * so data attributes in the template work automatically.
  */
 
-export type AnchorType = 'hand' | 'board-tile' | 'score' | 'hand-area' | 'board-center';
+export type AnchorType = 'hand' | 'board-tile' | 'score' | 'hand-area' | 'board-center' | 'avatar';
 
 interface AnchorEntry {
 	el: HTMLElement;

@@ -1,99 +1,66 @@
 /**
  * Central animation controller for the Gaple game.
  *
- * Listens to game events, manages an animation queue, and exposes
- * reactive state for overlay components to render.
+ * Orchestrates all game animations: listens to game events, manages an
+ * animation queue, and exposes reactive state for overlay components.
+ *
+ * Architecture (per animation-system.md):
+ *   Game Engine → Game Event → Animation Queue → AnimationManager → GSAP → Visual
  *
  * This file uses Svelte 5 runes ($state, $derived) so it must
  * be loaded in a .svelte.ts context.
  */
 
-import type { Domino, GameEvent, GameState, PlayerId } from '../../engine/types';
-import { getAnchorRect, getAnchorCenter, getBoardCenter, registerAnchor } from './domAnchors';
+import type { Domino, GameEvent } from '../../engine/types';
+import { getAnchorRect, getAnchorCenter, getBoardCenter, type AnchorType } from './domAnchors';
 import { delay, tween, easeOutBack } from './tween';
-import { getWinTypeConfig, type ConfettiIntensity } from './winTypes';
+import { getWinTypeConfig } from './winTypes';
+
+import type {
+	AnimationJob,
+	AnimationState,
+	FlyingTileAnim,
+	FlyingTileAnimData,
+	StampAnimData,
+	FloatingPointsAnimData,
+	ScoreUpdateAnimData,
+	ConfettiAnimData,
+	ScreenFlashAnimData,
+	SparkleAnimData,
+	DealAnimData,
+	PassAnimData,
+	TurnHighlightAnimData
+} from './types';
 
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export interface FlyingTileAnim {
-	id: string;
-	tile: Domino;
-	from: { x: number; y: number };
-	to: { x: number; y: number };
-	rotation: number;
-	/** Player who played this tile */
-	playerId: string;
-	/** Side the tile was placed on */
-	side: 'left' | 'right';
-	/** Duration in ms */
-	duration: number;
-}
-
-export interface StampAnim {
-	id: string;
-	label: string; // "Gab", "Ceki Palang", "Ceki", "Domi", "Gab Tangkap"
-	points: number;
-	winnerId: string;
-	winnerName: string;
-	/** Center position on screen */
-	center: { x: number; y: number };
-}
-
-export interface FloatingPointsAnim {
-	id: string;
-	label: string; // "+1", "+2", "+4"
-	from: { x: number; y: number };
-	to: { x: number; y: number };
-	playerId: string;
-	points: number;
-}
-
-export interface ScoreUpdateAnim {
-	playerId: string;
-	oldScore: number;
-	newScore: number;
-}
-
-export interface ConfettiAnim {
-	id: string;
-	center: { x: number; y: number };
-	intensity: ConfettiIntensity;
-}
-
-export interface ScreenFlashAnim {
-	id: string;
-	color: string;
-	duration: number;
-	peak: number;
-}
-
-export interface SparkleAnim {
-	id: string;
-	position: { x: number; y: number };
-	color: string;
-}
-
-// ── Sequential animation runner ────────────────────────────────────
-
-type AnimationJob =
-	| { kind: 'move'; data: FlyingTileAnim }
-	| { kind: 'stamp'; data: StampAnim }
-	| { kind: 'points-fly'; data: FloatingPointsAnim }
-	| { kind: 'score-update'; data: ScoreUpdateAnim }
-	| { kind: 'confetti'; data: ConfettiAnim }
-	| { kind: 'flash'; data: ScreenFlashAnim }
-	| { kind: 'sparkle'; data: SparkleAnim }
-	| { kind: 'delay'; ms: number };
+export type {
+	FlyingTileAnim,
+	StampAnimData,
+	FloatingPointsAnimData,
+	ScoreUpdateAnimData,
+	ConfettiAnimData,
+	ScreenFlashAnimData,
+	SparkleAnimData,
+	DealAnimData,
+	PassAnimData,
+	TurnHighlightAnimData,
+	AnimationState
+};
 
 export class GameAnimationController {
 	// ── Reactive state for overlay rendering ──
-	activeFlyingTiles = $state<FlyingTileAnim[]>([]);
-	activeStamp = $state<StampAnim | null>(null);
-	activeFloatingPoints = $state<FloatingPointsAnim[]>([]);
-	activeConfetti = $state<ConfettiAnim[]>([]);
-	activeScreenFlash = $state<ScreenFlashAnim | null>(null);
-	activeSparkles = $state<SparkleAnim[]>([]);
+	activeFlyingTiles = $state<FlyingTileAnimData[]>([]);
+	activeFlyingTileMeta = new Map<string, { tile: Domino; playerId: string; side: 'left' | 'right' }>();
+	activeStamp = $state<StampAnimData | null>(null);
+	activeFloatingPoints = $state<FloatingPointsAnimData[]>([]);
+	activeConfetti = $state<ConfettiAnimData[]>([]);
+	activeScreenFlash = $state<ScreenFlashAnimData | null>(null);
+	activeSparkles = $state<SparkleAnimData[]>([]);
+	activeDeal = $state<DealAnimData | null>(null);
+	activePass = $state<PassAnimData | null>(null);
+	activeTurnHighlight = $state<TurnHighlightAnimData | null>(null);
 
 	/** Tracks which board tile IDs should be hidden (while flying animation plays) */
 	hiddenBoardTileIds = $state<Set<string>>(new Set());
@@ -101,15 +68,22 @@ export class GameAnimationController {
 	/** Display scores that animate smoothly rather than jumping */
 	displayScores = $state<Record<string, number>>({});
 
+	/** Current animation state machine state */
+	animState = $state<AnimationState>('idle');
+
 	/** Event count tracker to avoid processing old events on mount */
 	processedEventCount = 0;
 
 	/** Guard to prevent double-enqueue of the same round result */
 	private _lastEnqueuedResultKey = '';
 
+	// ── Modular subsystems ──
 	private queue: AnimationJob[] = [];
 	private running = false;
 	private abortController: AbortController | null = null;
+
+	// ── Pending move source capture ──
+	private _pendingMoveSources = new Map<string, { x: number; y: number }>();
 
 	// ── Public API ──────────────────────────────
 
@@ -124,12 +98,17 @@ export class GameAnimationController {
 		this.abortController = new AbortController();
 		this.queue = [];
 		this.running = false;
+		this.animState = 'idle';
 		this.activeFlyingTiles = [];
+		this.activeFlyingTileMeta.clear();
 		this.activeStamp = null;
 		this.activeFloatingPoints = [];
 		this.activeConfetti = [];
 		this.activeScreenFlash = null;
 		this.activeSparkles = [];
+		this.activeDeal = null;
+		this.activePass = null;
+		this.activeTurnHighlight = null;
 		this.hiddenBoardTileIds = new Set();
 		this._lastEnqueuedResultKey = '';
 	}
@@ -159,7 +138,7 @@ export class GameAnimationController {
 	/**
 	 * Enqueue a one-off points-awarded animation (e.g. from cekik/pass scoring).
 	 */
-	enqueuePointsAwarded(playerId: string, points: number, winnerName: string, from?: { x: number; y: number }) {
+	enqueuePointsAwarded(playerId: string, points: number, _winnerName: string, from?: { x: number; y: number }) {
 		const scoreAnchor = getAnchorRect('score', playerId);
 		const boardCenter = getBoardCenter();
 		const to = scoreAnchor
@@ -173,8 +152,10 @@ export class GameAnimationController {
 			data: {
 				id: `points-${playerId}-${Date.now()}`,
 				label: `+${points}`,
-				from: startPos,
-				to,
+				fromX: startPos.x,
+				fromY: startPos.y,
+				toX: to.x,
+				toY: to.y,
 				playerId,
 				points
 			}
@@ -194,6 +175,89 @@ export class GameAnimationController {
 		// Fallback to hand area anchor
 		const handCenter = getAnchorCenter('hand-area', 'main');
 		return handCenter ?? getBoardCenter();
+	}
+
+	/**
+	 * Store a move source position for animation.
+	 */
+	storeMoveSource(tileId: string, pos: { x: number; y: number }) {
+		this._pendingMoveSources.set(tileId, pos);
+	}
+
+	// ── Public: Deal Animation ─────────────────
+
+	/**
+	 * Enqueue a deal animation for a player's hand.
+	 * Call after a new round starts.
+	 */
+	enqueueDealAnimation(
+		playerId: string,
+		tiles: { left: number; right: number; id: string }[],
+		handAnchorType: AnchorType = 'hand-area'
+	) {
+		const handCenter = getAnchorCenter(handAnchorType, playerId) ?? getBoardCenter();
+		const deckPos = getBoardCenter();
+
+		this.queue.push({
+			kind: 'deal',
+			data: {
+				id: `deal-${playerId}-${Date.now()}`,
+				playerId,
+				tiles,
+				fromX: deckPos.x,
+				fromY: deckPos.y - 20,
+				toX: handCenter.x,
+				toY: handCenter.y
+			}
+		});
+		this.runQueue();
+	}
+
+	// ── Public: Pass Animation ─────────────────
+
+	/**
+	 * Enqueue a pass animation at the player's avatar position.
+	 */
+	enqueuePassAnimation(playerId: string) {
+		const avatarRect = getAnchorRect('hand', playerId) ?? getAnchorRect('avatar', playerId);
+		const pos = avatarRect
+			? { x: avatarRect.left + avatarRect.width / 2, y: avatarRect.top + avatarRect.height / 2 }
+			: getBoardCenter();
+
+		this.queue.push({
+			kind: 'pass',
+			data: {
+				id: `pass-${playerId}-${Date.now()}`,
+				playerId,
+				avatarX: pos.x,
+				avatarY: pos.y
+			}
+		});
+		this.runQueue();
+	}
+
+	// ── Public: Turn Highlight Animation ───────
+
+	/**
+	 * Enqueue a turn highlight transition.
+	 */
+	enqueueTurnHighlight(playerId: string, previousPlayerId: string | null) {
+		const avatarRect = getAnchorRect('hand', playerId) ?? getAnchorRect('avatar', playerId);
+		const pos = avatarRect
+			? { x: avatarRect.left + avatarRect.width / 2, y: avatarRect.top + avatarRect.height / 2 }
+			: getBoardCenter();
+
+		this.queue.push({
+			kind: 'turn-highlight',
+			data: {
+				id: `turn-${playerId}-${Date.now()}`,
+				playerId,
+				previousPlayerId,
+				avatarX: pos.x,
+				avatarY: pos.y
+			}
+		});
+		this.runQueue();
 	}
 
 	// ── Private ─────────────────────────────────
@@ -223,24 +287,32 @@ export class GameAnimationController {
 					? { x: boardRect.left + boardRect.width / 2, y: boardRect.top + boardRect.height / 2 }
 					: getBoardCenter();
 
-				const player = players.find((p) => p.id === playerId);
 				const isMain = playerId === '0';
 				const duration = isMain ? 320 : 420 + Math.random() * 100;
 
 				// Hide the real board tile until animation lands
 				this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds, tileId]);
 
+				const data: FlyingTileAnimData = {
+					id: tileId,
+					fromX: from.x,
+					fromY: from.y,
+					toX: to.x,
+					toY: to.y,
+					rotation: side === 'left' ? -8 : 8,
+					duration
+				};
+
+				// Store meta separately
+				this.activeFlyingTileMeta.set(tileId, { tile, playerId, side });
+
 				this.queue.push({
 					kind: 'move',
 					data: {
-						id: tileId,
+						...data,
 						tile,
-						from,
-						to,
-						rotation: side === 'left' ? -8 : 8,
 						playerId,
-						side,
-						duration
+						side
 					}
 				});
 				break;
@@ -255,18 +327,13 @@ export class GameAnimationController {
 			case 'POINTS_AWARDED': {
 				const pid = event.payload.playerId as string;
 				const pts = event.payload.points as number;
-				const reason = event.payload.reason as string;
 				if (!pid || !pts) return;
 
-				const player = players.find((p) => p.id === pid);
-				const playerName = player?.name ?? 'Player';
 				const boardCenter = getBoardCenter();
-
-				// Source: nearby the player's area
 				const handCenter = getAnchorCenter('hand-area', pid) ?? boardCenter;
 				const from = { x: handCenter.x, y: handCenter.y - 40 };
 
-				this.enqueuePointsAwarded(pid, pts, playerName, from);
+				this.enqueuePointsAwarded(pid, pts, '', from);
 				break;
 			}
 
@@ -320,7 +387,8 @@ export class GameAnimationController {
 				points,
 				winnerId,
 				winnerName,
-				center: boardCenter
+				centerX: boardCenter.x,
+				centerY: boardCenter.y
 			}
 		});
 
@@ -331,7 +399,8 @@ export class GameAnimationController {
 				kind: 'confetti',
 				data: {
 					id: `confetti-${Date.now()}`,
-					center: boardCenter,
+					centerX: boardCenter.x,
+					centerY: boardCenter.y,
 					intensity: winConfig.intensity === 'epic' ? 'epic' : 'normal'
 				}
 			});
@@ -351,8 +420,10 @@ export class GameAnimationController {
 			data: {
 				id: `points-${winnerId}-${Date.now()}`,
 				label: `+${points}`,
-				from: { x: boardCenter.x, y: boardCenter.y + 40 },
-				to,
+				fromX: boardCenter.x,
+				fromY: boardCenter.y + 40,
+				toX: to.x,
+				toY: to.y,
 				playerId: winnerId,
 				points
 			}
@@ -363,7 +434,8 @@ export class GameAnimationController {
 			kind: 'sparkle',
 			data: {
 				id: `sparkle-${Date.now()}`,
-				position: to,
+				positionX: to.x,
+				positionY: to.y,
 				color: '#F59E0B'
 			}
 		});
@@ -379,84 +451,103 @@ export class GameAnimationController {
 		});
 	}
 
-	// ── Pending move source capture ──
-	private _pendingMoveSources = new Map<string, { x: number; y: number }>();
-
-	storeMoveSource(tileId: string, pos: { x: number; y: number }) {
-		this._pendingMoveSources.set(tileId, pos);
-	}
-
 	// ── Queue runner ─────────────────────────────
 
 	private async runQueue() {
 		if (this.running || this.queue.length === 0) return;
 		this.running = true;
+		this.animState = 'playing';
 
 		const signal = this.abortController?.signal;
 
 		while (this.queue.length > 0 && !signal?.aborted) {
 			const job = this.queue.shift()!;
 
-			try {			switch (job.kind) {
-				case 'move':
-					await this.playMove(job.data, signal);
-					break;
-				case 'stamp':
-					this.playStamp(job.data);
-					break;
-				case 'points-fly':
-					await this.playPointsFly(job.data, signal);
-					break;
-				case 'score-update':
-					await this.playScoreUpdate(job.data, signal);
-					break;
-				case 'confetti':
-					await this.playConfetti(job.data, signal);
-					break;
-				case 'flash':
-					await this.playFlash(job.data, signal);
-					break;
-				case 'sparkle':
-					await this.playSparkle(job.data, signal);
-					break;
-				case 'delay':
-					await delay(job.ms, signal);
-					break;
-			}
+			try {
+				switch (job.kind) {
+					case 'move':
+						await this.playMove(job.data, signal);
+						break;
+					case 'stamp':
+						this.playStamp(job.data);
+						break;
+					case 'points-fly':
+						await this.playPointsFly(job.data, signal);
+						break;
+					case 'score-update':
+						await this.playScoreUpdate(job.data, signal);
+						break;
+					case 'confetti':
+						await this.playConfetti(job.data, signal);
+						break;
+					case 'flash':
+						await this.playFlash(job.data, signal);
+						break;
+					case 'sparkle':
+						await this.playSparkle(job.data, signal);
+						break;
+					case 'deal':
+						await this.playDeal(job.data, signal);
+						break;
+					case 'pass':
+						await this.playPass(job.data, signal);
+						break;
+					case 'turn-highlight':
+						await this.playTurnHighlight(job.data, signal);
+						break;
+					case 'delay':
+						await delay(job.ms, signal);
+						break;
+				}
 			} catch {
 				// Ignore errors from aborted animations
 			}
 		}
 
 		this.running = false;
+		this.animState = this.queue.length > 0 ? 'playing' : 'idle';
 	}
+
+	// ── Animation playback methods ───────────────
 
 	private async playMove(anim: FlyingTileAnim, signal?: AbortSignal) {
-		// Show flying tile
-		this.activeFlyingTiles = [...this.activeFlyingTiles, anim];
+		const { tile, ...data } = anim;
+		this.animState = 'playing';
 
-		// Wait for flight duration
-		await delay(anim.duration, signal);
+		// Store data for the overlay (FlyingTileOverlay handles GSAP via card-animations.ts)
+		this.activeFlyingTiles = [...this.activeFlyingTiles, data];
 
-		// Remove overlay and show real board tile
-		this.activeFlyingTiles = this.activeFlyingTiles.filter((a) => a.id !== anim.id);
-		this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds].filter((id) => id !== anim.id));
+		// Wait for the flying animation to complete
+		await delay(anim.duration + 50, signal);
+
+		// Fire sparkle at landing spot
+		this.queue.push({
+			kind: 'sparkle',
+			data: {
+				id: `sparkle-land-${data.id}`,
+				positionX: data.toX,
+				positionY: data.toY,
+				color: '#F59E0B'
+			}
+		});
+
+		// Show the real board tile and remove overlay
+		this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds].filter((id) => id !== tile.id));
+		this.activeFlyingTiles = this.activeFlyingTiles.filter((d) => d.id !== data.id);
+		this.activeFlyingTileMeta.delete(data.id);
 	}
 
-	private playStamp(anim: StampAnim) {
+	private playStamp(anim: StampAnimData) {
 		this.activeStamp = anim;
 	}
 
-	private async playPointsFly(anim: FloatingPointsAnim, signal?: AbortSignal) {
+	private async playPointsFly(anim: FloatingPointsAnimData, signal?: AbortSignal) {
 		this.activeFloatingPoints = [...this.activeFloatingPoints, anim];
-
-		const flyDuration = 600;
-		await delay(flyDuration, signal);
-
+		await delay(600, signal);
 		this.activeFloatingPoints = this.activeFloatingPoints.filter((a) => a.id !== anim.id);
 	}
 
-	private async playScoreUpdate(anim: ScoreUpdateAnim, signal?: AbortSignal) {
+	private async playScoreUpdate(anim: ScoreUpdateAnimData, signal?: AbortSignal) {
 		await tween(
 			{
 				from: anim.oldScore,
@@ -480,14 +571,14 @@ export class GameAnimationController {
 		);
 	}
 
-	private async playConfetti(anim: ConfettiAnim, signal?: AbortSignal) {
+	private async playConfetti(anim: ConfettiAnimData, signal?: AbortSignal) {
 		this.activeConfetti = [...this.activeConfetti, anim];
 		const duration = anim.intensity === 'epic' ? 1700 : 1500;
 		await delay(duration, signal);
 		this.activeConfetti = this.activeConfetti.filter((a) => a.id !== anim.id);
 	}
 
-	private async playFlash(anim: ScreenFlashAnim, signal?: AbortSignal) {
+	private async playFlash(anim: ScreenFlashAnimData, signal?: AbortSignal) {
 		this.activeScreenFlash = anim;
 		await delay(anim.duration, signal);
 		if (this.activeScreenFlash?.id === anim.id) {
@@ -495,9 +586,38 @@ export class GameAnimationController {
 		}
 	}
 
-	private async playSparkle(anim: SparkleAnim, signal?: AbortSignal) {
+	private async playSparkle(anim: SparkleAnimData, signal?: AbortSignal) {
 		this.activeSparkles = [...this.activeSparkles, anim];
 		await delay(520, signal);
 		this.activeSparkles = this.activeSparkles.filter((a) => a.id !== anim.id);
+	}
+
+	private async playDeal(anim: DealAnimData, signal?: AbortSignal) {
+		this.animState = 'playing';
+		this.activeDeal = anim;
+		// Show for the duration of the deal animation (staggered cards)
+		const dealDuration = 250 + anim.tiles.length * 60;
+		await delay(dealDuration, signal);
+		if (this.activeDeal?.id === anim.id) {
+			this.activeDeal = null;
+		}
+	}
+
+	private async playPass(anim: PassAnimData, signal?: AbortSignal) {
+		this.animState = 'playing';
+		this.activePass = anim;
+		await delay(800, signal);
+		if (this.activePass?.id === anim.id) {
+			this.activePass = null;
+		}
+	}
+
+	private async playTurnHighlight(anim: TurnHighlightAnimData, signal?: AbortSignal) {
+		this.animState = 'playing';
+		this.activeTurnHighlight = anim;
+		await delay(700, signal);
+		if (this.activeTurnHighlight?.id === anim.id) {
+			this.activeTurnHighlight = null;
+		}
 	}
 }

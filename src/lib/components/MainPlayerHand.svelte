@@ -164,6 +164,7 @@
 
 <div
 	class="hand-container flex justify-center gap-0.5 px-1 md:gap-1 md:px-2 [&::-webkit-scrollbar]:hidden"
+	data-player-id={player.id}
 	style="flex-wrap:nowrap;"
 >
 	{#each orderedHand as tile, index (tile.id)}

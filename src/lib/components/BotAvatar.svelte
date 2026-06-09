@@ -38,6 +38,7 @@
 
 <div
 	class="pointer-events-auto relative z-20 flex flex-col items-center justify-center gap-1 rounded-lg border border-stone-700 bg-surface {sizeClass.container}"
+	data-avatar-id={player.id}
 >
 	{#if isMyTurn}
 		<div

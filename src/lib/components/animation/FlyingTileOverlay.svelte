@@ -1,58 +1,66 @@
 <script lang="ts">
 	import DominoTile from '../DominoTile.svelte';
 	import { onMount } from 'svelte';
-	import { runAnimation, easeOutCubic } from '$lib/animation/tween';
+	import { createPlayCardAnimation } from '$lib/animation/card-animations';
+	import type { FlyingTileAnimData } from '$lib/animation/types';
 
 	interface Props {
-		tile: { left: number; right: number };
-		fromX: number;
-		fromY: number;
-		toX: number;
-		toY: number;
-		rotation: number;
-		duration: number;
+		data: FlyingTileAnimData;
+		tile: { left: number; right: number; id: string };
 	}
 
-	let { tile, fromX, fromY, toX, toY, rotation, duration }: Props = $props();
+	let { data, tile }: Props = $props();
 
-	let x = $state(fromX);
-	let y = $state(fromY);
-	let rot = $state(rotation * 1.5);
-	let scale = $state(1.15);
+	let x = $state(data.fromX);
+	let y = $state(data.fromY);
+	let rot = $state(data.rotation);
+	let scale = $state(0.5);
 	let opacity = $state(0);
-
-	/** Vertical arc height (px) — gives the tile a "thrown" feel. */
-	const ARC_HEIGHT = 60;
-	/** Initial rotation multiplier — tile tilts more at start, settles on land. */
-	const TILT_OVERSHOOT = 1.6;
+	let shadowX = $state(data.fromX);
+	let shadowY = $state(data.fromY);
+	let shadowSize = $state(0.2);
+	let shadowOpacity = $state(0.1);
 
 	onMount(() => {
-		const controller = new AbortController();
-		// Capture props at mount time — flying tile is one-shot
-		const fx = fromX,
-			fy = fromY,
-			tx = toX,
-			ty = toY,
-			rot0 = rotation;
-		runAnimation({
-			duration,
-			easing: easeOutCubic,
-			abortSignal: controller.signal,
-			onUpdate: (p) => {
-				x = fx + (tx - fx) * p;
-				y = fy + (ty - fy) * p - Math.sin(p * Math.PI) * ARC_HEIGHT;
-				rot = rot0 * TILT_OVERSHOOT * (1 - p);
-				scale = 1.15 - 0.15 * p;
-				opacity = Math.min(1, p * 4);
+		// Delegate all GSAP work to card-animations.ts
+		const cleanup = createPlayCardAnimation({
+			id: data.id,
+			fromX: data.fromX,
+			fromY: data.fromY,
+			toX: data.toX,
+			toY: data.toY,
+			rotation: data.rotation,
+			duration: data.duration,
+			onUpdate: (state) => {
+				x = state.x;
+				y = state.y;
+				rot = state.rot;
+				scale = state.scale;
+				opacity = state.opacity;
+				shadowX = state.shadowX;
+				shadowY = state.shadowY;
+				shadowSize = state.shadowSize;
+				shadowOpacity = state.shadowOpacity;
+			},
+			onComplete: () => {
+				// Sparkle and cleanup handled by controller's playMove
 			}
 		});
-		return () => controller.abort();
+
+		return cleanup;
 	});
 </script>
 
-<div
-	class="pointer-events-none fixed z-50"
-	style="left:{x}px; top:{y}px; transform:translate(-50%,-50%) rotate({rot}deg) scale({scale}); opacity:{opacity};"
->
-	<DominoTile {tile} isVertical={false} size="md" />
+<div class="pointer-events-none fixed z-50" style="left:{x}px; top:{y}px;">
+	<!-- Shadow anchored to the ground (straight-line position), tile arcs above it -->
+	<div
+		class="absolute rounded-full bg-black/30"
+		style="left:{shadowX - x}px; top:{shadowY - y}px; width:{60 * shadowSize}px; height:{16 * shadowSize}px; opacity:{shadowOpacity}; filter:blur({shadowSize * 3}px); transform:translate(-50%,-50%);"
+	></div>
+	<!-- Tile -->
+	<div
+		style="transform:translate(-50%,-50%) rotate({rot}deg) scale({scale}); opacity:{opacity}; will-change:transform;"
+	>
+		<DominoTile {tile} isVertical={false} size="md" />
+	</div>
 </div>

@@ -24,7 +24,7 @@
 		runAnimation({
 			duration: 520,
 			easing: easeOutCubic,
-			signal: controller.signal,
+			abortSignal: controller.signal,
 			onUpdate: (p) => {
 				if (p < 0.55) {
 					const sp = p / 0.55;

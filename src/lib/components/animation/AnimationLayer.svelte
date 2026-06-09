@@ -6,6 +6,9 @@
 	import ConfettiOverlay from './ConfettiOverlay.svelte';
 	import ScreenFlashOverlay from './ScreenFlashOverlay.svelte';
 	import SparkleOverlay from './SparkleOverlay.svelte';
+	import DealOverlay from './DealOverlay.svelte';
+	import PassOverlay from './PassOverlay.svelte';
+	import TurnHighlightOverlay from './TurnHighlightOverlay.svelte';
 
 	interface Props {
 		controller: GameAnimationController;
@@ -19,6 +22,14 @@
 	let confetti = $derived(controller.activeConfetti);
 	let flash = $derived(controller.activeScreenFlash);
 	let sparkles = $derived(controller.activeSparkles);
+	let deal = $derived(controller.activeDeal);
+	let pass = $derived(controller.activePass);
+	let turnHighlight = $derived(controller.activeTurnHighlight);
+
+	function getFlyingTileMeta(id: string) {
+		const meta = controller.activeFlyingTileMeta.get(id);
+		return meta ?? null;
+	}
 </script>
 
 <!-- Screen flash (lowest z, behind everything) -->
@@ -26,17 +37,41 @@
 	<ScreenFlashOverlay color={flash.color} duration={flash.duration} peak={flash.peak} />
 {/if}
 
+<!-- Deal animation overlay -->
+{#if deal}
+	<DealOverlay
+		tiles={deal.tiles}
+		fromX={deal.fromX}
+		fromY={deal.fromY}
+		toX={deal.toX}
+		toY={deal.toY}
+	/>
+{/if}
+
+<!-- Turn highlight overlay -->
+{#if turnHighlight}
+	<TurnHighlightOverlay
+		playerId={turnHighlight.playerId}
+		avatarX={turnHighlight.avatarX}
+		avatarY={turnHighlight.avatarY}
+	/>
+{/if}
+
+<!-- Pass overlay -->
+{#if pass}
+	<PassOverlay
+		playerId={pass.playerId}
+		avatarX={pass.avatarX}
+		avatarY={pass.avatarY}
+	/>
+{/if}
+
 <!-- Flying tiles overlay -->
 {#each flyingTiles as anim (anim.id)}
-	<FlyingTileOverlay
-		tile={anim.tile}
-		fromX={anim.from.x}
-		fromY={anim.from.y}
-		toX={anim.to.x}
-		toY={anim.to.y}
-		rotation={anim.rotation}
-		duration={anim.duration}
-	/>
+	{@const meta = getFlyingTileMeta(anim.id)}
+	{#if meta}
+		<FlyingTileOverlay data={anim} tile={meta.tile} />
+	{/if}
 {/each}
 
 <!-- Center stamp overlay -->
@@ -45,16 +80,16 @@
 		label={stamp.label}
 		points={stamp.points}
 		winnerName={stamp.winnerName}
-		centerX={stamp.center.x}
-		centerY={stamp.center.y}
+		centerX={stamp.centerX}
+		centerY={stamp.centerY}
 	/>
 {/if}
 
 <!-- Confetti burst -->
 {#each confetti as anim (anim.id)}
 	<ConfettiOverlay
-		centerX={anim.center.x}
-		centerY={anim.center.y}
+		centerX={anim.centerX}
+		centerY={anim.centerY}
 		intensity={anim.intensity}
 	/>
 {/each}
@@ -63,14 +98,14 @@
 {#each floatingPoints as anim (anim.id)}
 	<FloatingPointsOverlay
 		label={anim.label}
-		fromX={anim.from.x}
-		fromY={anim.from.y}
-		toX={anim.to.x}
-		toY={anim.to.y}
+		fromX={anim.fromX}
+		fromY={anim.fromY}
+		toX={anim.toX}
+		toY={anim.toY}
 	/>
 {/each}
 
 <!-- Sparkle bursts on score land -->
 {#each sparkles as anim (anim.id)}
-	<SparkleOverlay x={anim.position.x} y={anim.position.y} color={anim.color} />
+	<SparkleOverlay x={anim.positionX} y={anim.positionY} color={anim.color} />
 {/each}

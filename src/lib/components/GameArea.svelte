@@ -326,6 +326,10 @@
 
 	// ── Animation Controller ────────────────────────────────────────────
 	let animController = $state(new GameAnimationController());
+	/** Track previous turn index for turn highlight animation (separate from timer) */
+	let prevTurnForHighlight = $state(-1);
+	/** Track whether deal animation has been triggered for the current round */
+	let dealTriggered = $state(false);
 
 	// Init display scores on mount and when re-initializing
 	$effect(() => {
@@ -340,6 +344,62 @@
 		const players = currentGameState?.players;
 		if (!events || !players) return;
 		animController.processEvents(events, players);
+	});
+
+	// Deal animation: trigger when a new round starts (events reset or first state)
+	let dealTriggeredPrevEventCount = $state(0);
+	$effect(() => {
+		const state = currentGameState;
+		if (!state) return;
+		const eventCount = state.events.length;
+		// Detect new round: events cleared (shrank) or first state with no events
+		if ((eventCount === 0 && dealTriggeredPrevEventCount > 0) ||
+		    (eventCount === 0 && !dealTriggered)) {
+			dealTriggered = true;
+			dealTriggeredPrevEventCount = 0;
+			for (const player of state.players) {
+				const tiles = player.hand.map((t: { left: number; right: number; id: string }) => ({
+					left: t.left,
+					right: t.right,
+					id: t.id
+				}));
+				animController.enqueueDealAnimation(player.id, tiles);
+			}
+		} else if (eventCount > 0) {
+			dealTriggeredPrevEventCount = eventCount;
+		}
+	});
+
+	// Pass animation: detect PLAYER_PASS events
+	$effect(() => {
+		const events = currentGameState?.events;
+		if (!events) return;
+		const lastEvent = events[events.length - 1];
+		if (lastEvent && lastEvent.type === 'PLAYER_PASS') {
+			const pid = lastEvent.payload.playerId as string;
+			if (pid) {
+				animController.enqueuePassAnimation(pid);
+			}
+		}
+	});
+
+	// Turn highlight: detect turnIndex changes
+	$effect(() => {
+		const state = currentGameState;
+		if (!state || state.result) return;
+		const currentIdx = state.turnIndex;
+		const prevIdx = prevTurnForHighlight;
+		if (currentIdx !== prevIdx && prevIdx >= 0 && currentIdx >= 0) {
+			const player = state.players[currentIdx];
+			const prevPlayer = prevIdx >= 0 ? state.players[prevIdx] : null;
+			if (player) {
+				animController.enqueueTurnHighlight(
+					player.id,
+					prevPlayer?.id ?? null
+				);
+			}
+		}
+		prevTurnForHighlight = currentIdx;
 	});
 
 	// Detect round result and enqueue stamp/score animation

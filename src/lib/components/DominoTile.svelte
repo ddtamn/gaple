@@ -2,7 +2,7 @@
 	export type TileSize = 'xs' | 'sm' | 'md' | 'lg';
 
 	interface Props {
-		tile: { left: number; right: number };
+		tile: { id?: string; left: number; right: number };
 		isVertical?: boolean;
 		size?: TileSize;
 	}
@@ -63,7 +63,7 @@
 	});
 </script>
 
-<div class="flex overflow-hidden {s.rounded} border border-stone-300 bg-white {s.container}">
+<div class="flex overflow-hidden {s.rounded} border border-stone-300 bg-white {s.container}" data-card-id={tile.id}>
 	<div
 		class="grid h-full min-h-0 w-full min-w-0 flex-1 grid-cols-3 grid-rows-3 place-items-center {s.gridPadding} {!isVertical
 			? 'rotate-90'

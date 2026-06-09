@@ -70,6 +70,7 @@
 
 <div
 	class="relative flex flex-col items-center justify-center {isMain ? 'origin-bottom scale-[1.3]' : ''}"
+	data-player-id={player.id}
 >
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div

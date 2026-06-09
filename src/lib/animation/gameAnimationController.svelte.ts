@@ -4,17 +4,19 @@
  * Orchestrates all game animations: listens to game events, manages an
  * animation queue, and exposes reactive state for overlay components.
  *
- * Architecture (per animation-system.md):
- *   Game Engine → Game Event → Animation Queue → AnimationManager → GSAP → Visual
+ * PIXIJS-READY: This controller contains ZERO DOM-specific logic.
+ * All positions are passed in as parameters — the caller (GameArea)
+ * is responsible for resolving them via domAnchors (DOM) or canvas
+ * coordinates (PixiJS).
  *
  * This file uses Svelte 5 runes ($state, $derived) so it must
  * be loaded in a .svelte.ts context.
  */
 
 import type { Domino, GameEvent } from '../../engine/types';
-import { getAnchorRect, getAnchorCenter, getBoardCenter, type AnchorType } from './domAnchors';
 import { delay, tween, easeOutBack } from './tween';
 import { getWinTypeConfig } from './winTypes';
+import { AnimationEventBus, type Vec2 } from './renderer';
 
 import type {
 	AnimationJob,
@@ -33,7 +35,7 @@ import type {
 } from './types';
 
 
-// ── Types ──────────────────────────────────────────────────────────
+// ── Exported types ─────────────────────────────────────────────────
 
 export type {
 	FlyingTileAnim,
@@ -50,6 +52,9 @@ export type {
 };
 
 export class GameAnimationController {
+	// ── Event bus (for PixiJS / external subscribers) ──
+	events = new AnimationEventBus();
+
 	// ── Reactive state for overlay rendering ──
 	activeFlyingTiles = $state<FlyingTileAnimData[]>([]);
 	activeFlyingTileMeta = new Map<string, { tile: Domino; playerId: string; side: 'left' | 'right' }>();
@@ -77,13 +82,10 @@ export class GameAnimationController {
 	/** Guard to prevent double-enqueue of the same round result */
 	private _lastEnqueuedResultKey = '';
 
-	// ── Modular subsystems ──
+	// ── Internal queue ──
 	private queue: AnimationJob[] = [];
 	private running = false;
 	private abortController: AbortController | null = null;
-
-	// ── Pending move source capture ──
-	private _pendingMoveSources = new Map<string, { x: number; y: number }>();
 
 	// ── Public API ──────────────────────────────
 
@@ -111,13 +113,24 @@ export class GameAnimationController {
 		this.activeTurnHighlight = null;
 		this.hiddenBoardTileIds = new Set();
 		this._lastEnqueuedResultKey = '';
+		this.events.removeAll();
 	}
 
 	/**
-	 * Process new game events and enqueue appropriate animations.
-	 * Call this from an $effect whenever events change.
+	 * Process new game events and enqueue animations.
+	 * 
+	 * PIXIJS NOTE: positions are resolved externally (by GameArea using domAnchors
+	 * or by a PixiJS layout system) and passed in via getPositions. This is the
+	 * only place the controller learns about DOM/canvas coordinates.
 	 */
-	processEvents(events: GameEvent[], players: { id: string; name: string }[]) {
+	processEvents(
+		events: GameEvent[],
+		players: { id: string; name: string }[],
+		getPositions?: (event: GameEvent) => {
+			from: Vec2;
+			to: Vec2;
+		} | null
+	) {
 		if (!events || events.length === 0) return;
 
 		// Detect round reset (events shrunk)
@@ -128,7 +141,7 @@ export class GameAnimationController {
 
 		for (let i = this.processedEventCount; i < events.length; i++) {
 			const event = events[i];
-			this.enqueueEvent(event, players);
+			this.enqueueEvent(event, players, getPositions);
 		}
 
 		this.processedEventCount = events.length;
@@ -136,24 +149,23 @@ export class GameAnimationController {
 	}
 
 	/**
-	 * Enqueue a one-off points-awarded animation (e.g. from cekik/pass scoring).
+	 * Enqueue a points-awarded animation.
+	 * All positions are passed as parameters — no DOM queries.
 	 */
-	enqueuePointsAwarded(playerId: string, points: number, _winnerName: string, from?: { x: number; y: number }) {
-		const scoreAnchor = getAnchorRect('score', playerId);
-		const boardCenter = getBoardCenter();
-		const to = scoreAnchor
-			? { x: scoreAnchor.left + scoreAnchor.width / 2, y: scoreAnchor.top + scoreAnchor.height / 2 }
-			: boardCenter;
-
-		const startPos = from ?? { x: boardCenter.x, y: boardCenter.y - 60 };
-
+	enqueuePointsAwarded(
+		playerId: string,
+		points: number,
+		_winnerName: string,
+		from: Vec2,
+		to: Vec2
+	) {
 		this.queue.push({
 			kind: 'points-fly',
 			data: {
 				id: `points-${playerId}-${Date.now()}`,
 				label: `+${points}`,
-				fromX: startPos.x,
-				fromY: startPos.y,
+				fromX: from.x,
+				fromY: from.y,
 				toX: to.x,
 				toY: to.y,
 				playerId,
@@ -164,40 +176,15 @@ export class GameAnimationController {
 	}
 
 	/**
-	 * Capture source rect for a tile being played by the main player.
-	 * Called BEFORE the game state updates.
-	 */
-	captureMoveSource(tileId: string, el?: HTMLElement | null): { x: number; y: number } | null {
-		if (el && document.contains(el)) {
-			const rect = el.getBoundingClientRect();
-			return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-		}
-		// Fallback to hand area anchor
-		const handCenter = getAnchorCenter('hand-area', 'main');
-		return handCenter ?? getBoardCenter();
-	}
-
-	/**
-	 * Store a move source position for animation.
-	 */
-	storeMoveSource(tileId: string, pos: { x: number; y: number }) {
-		this._pendingMoveSources.set(tileId, pos);
-	}
-
-	// ── Public: Deal Animation ─────────────────
-
-	/**
-	 * Enqueue a deal animation for a player's hand.
-	 * Call after a new round starts.
+	 * Enqueue a deal animation with explicit positions.
+	 * All positions passed as parameters — no DOM queries.
 	 */
 	enqueueDealAnimation(
 		playerId: string,
 		tiles: { left: number; right: number; id: string }[],
-		handAnchorType: AnchorType = 'hand-area'
+		deckPos: Vec2,
+		handPos: Vec2
 	) {
-		const handCenter = getAnchorCenter(handAnchorType, playerId) ?? getBoardCenter();
-		const deckPos = getBoardCenter();
-
 		this.queue.push({
 			kind: 'deal',
 			data: {
@@ -206,166 +193,110 @@ export class GameAnimationController {
 				tiles,
 				fromX: deckPos.x,
 				fromY: deckPos.y - 20,
-				toX: handCenter.x,
-				toY: handCenter.y
+				toX: handPos.x,
+				toY: handPos.y
 			}
 		});
 		this.runQueue();
 	}
 
-	// ── Public: Pass Animation ─────────────────
-
 	/**
-	 * Enqueue a pass animation at the player's avatar position.
+	 * Enqueue a pass animation with explicit avatar position.
 	 */
-	enqueuePassAnimation(playerId: string) {
-		const avatarRect = getAnchorRect('hand', playerId) ?? getAnchorRect('avatar', playerId);
-		const pos = avatarRect
-			? { x: avatarRect.left + avatarRect.width / 2, y: avatarRect.top + avatarRect.height / 2 }
-			: getBoardCenter();
-
+	enqueuePassAnimation(playerId: string, avatarPos: Vec2) {
 		this.queue.push({
 			kind: 'pass',
 			data: {
 				id: `pass-${playerId}-${Date.now()}`,
 				playerId,
-				avatarX: pos.x,
-				avatarY: pos.y
+				avatarX: avatarPos.x,
+				avatarY: avatarPos.y
 			}
 		});
 		this.runQueue();
 	}
 
-	// ── Public: Turn Highlight Animation ───────
-
 	/**
-	 * Enqueue a turn highlight transition.
+	 * Enqueue a turn highlight transition with explicit avatar position.
 	 */
-	enqueueTurnHighlight(playerId: string, previousPlayerId: string | null) {
-		const avatarRect = getAnchorRect('hand', playerId) ?? getAnchorRect('avatar', playerId);
-		const pos = avatarRect
-			? { x: avatarRect.left + avatarRect.width / 2, y: avatarRect.top + avatarRect.height / 2 }
-			: getBoardCenter();
-
+	enqueueTurnHighlight(playerId: string, previousPlayerId: string | null, avatarPos: Vec2) {
 		this.queue.push({
 			kind: 'turn-highlight',
 			data: {
 				id: `turn-${playerId}-${Date.now()}`,
 				playerId,
 				previousPlayerId,
-				avatarX: pos.x,
-				avatarY: pos.y
+				avatarX: avatarPos.x,
+				avatarY: avatarPos.y
 			}
 		});
 		this.runQueue();
 	}
 
-	// ── Private ─────────────────────────────────
+	/**
+	 * Enqueue a flying tile (move) animation with explicit from/to positions.
+	 */
+	enqueueMove(
+		tileId: string,
+		tile: Domino,
+		playerId: string,
+		side: 'left' | 'right',
+		from: Vec2,
+		to: Vec2
+	) {
+		const isMain = playerId === '0';
+		const duration = isMain ? 320 : 420 + Math.random() * 100;
 
-	private enqueueEvent(event: GameEvent, players: { id: string; name: string }[]) {
-		switch (event.type) {
-			case 'MOVE_PLAYED': {
-				const payload = event.payload as Record<string, unknown>;
-				const side = payload.side as 'left' | 'right';
-				const tile = payload.tile as Domino | undefined;
-				const playerId = payload.playerId as string;
-				const tileId = payload.tileId as string;
+		this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds, tileId]);
 
-				if (!tile || !playerId) return;
+		const data: FlyingTileAnimData = {
+			id: tileId,
+			fromX: from.x,
+			fromY: from.y,
+			toX: to.x,
+			toY: to.y,
+			rotation: side === 'left' ? -8 : 8,
+			duration
+		};
 
-				// Source: try to find from pending capture or player hand area
-				let from = this._pendingMoveSources.get(tileId);
-				if (!from) {
-					const handCenter = getAnchorCenter('hand', playerId) ?? getAnchorCenter('hand-area', playerId);
-					from = handCenter ?? getBoardCenter();
-				}
-				this._pendingMoveSources.delete(tileId);
+		this.activeFlyingTileMeta.set(tileId, { tile, playerId, side });
 
-				// Target: board tile position
-				const boardRect = getAnchorRect('board-tile', tileId);
-				const to = boardRect
-					? { x: boardRect.left + boardRect.width / 2, y: boardRect.top + boardRect.height / 2 }
-					: getBoardCenter();
+		this.queue.push({
+			kind: 'move',
+			data: { ...data, tile, playerId, side }
+		});
+		this.runQueue();
+	}
 
-				const isMain = playerId === '0';
-				const duration = isMain ? 320 : 420 + Math.random() * 100;
-
-				// Hide the real board tile until animation lands
-				this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds, tileId]);
-
-				const data: FlyingTileAnimData = {
-					id: tileId,
-					fromX: from.x,
-					fromY: from.y,
-					toX: to.x,
-					toY: to.y,
-					rotation: side === 'left' ? -8 : 8,
-					duration
-				};
-
-				// Store meta separately
-				this.activeFlyingTileMeta.set(tileId, { tile, playerId, side });
-
-				this.queue.push({
-					kind: 'move',
-					data: {
-						...data,
-						tile,
-						playerId,
-						side
-					}
-				});
-				break;
-			}
-
-			case 'GAME_OVER': {
-				// Enqueue a brief delay to let the last move animation finish
-				this.queue.push({ kind: 'delay', ms: 150 });
-				break;
-			}
-
-			case 'POINTS_AWARDED': {
-				const pid = event.payload.playerId as string;
-				const pts = event.payload.points as number;
-				if (!pid || !pts) return;
-
-				const boardCenter = getBoardCenter();
-				const handCenter = getAnchorCenter('hand-area', pid) ?? boardCenter;
-				const from = { x: handCenter.x, y: handCenter.y - 40 };
-
-				this.enqueuePointsAwarded(pid, pts, '', from);
-				break;
-			}
-
-			case 'ROUND_SCORED': {
-				// Handled via detectResultChange for richer data
-				break;
-			}
-		}
+	/** Enqueue a delay job. */
+	enqueueDelay(ms: number) {
+		this.queue.push({ kind: 'delay', ms });
+		this.runQueue();
 	}
 
 	/**
-	 * Called manually when a new result is detected (richer data available).
-	 * Has a guard to prevent double-enqueuing the same result.
+	 * Enqueue round result (stamp + confetti + points + score update).
+	 * boardCenter and scoreTarget positions are passed explicitly.
 	 */
 	enqueueRoundResult(
 		winnerId: string,
 		winnerName: string,
 		points: number,
 		winType: string,
-		pointStandings: Record<string, number>
+		pointStandings: Record<string, number>,
+		boardCenter: Vec2,
+		scoreTarget: Vec2
 	) {
 		const key = `${winnerId}:${points}:${winType}`;
 		if (key === this._lastEnqueuedResultKey) return;
 		this._lastEnqueuedResultKey = key;
-		const boardCenter = getBoardCenter();
 		const oldScore = this.displayScores[winnerId] ?? 0;
 		const newScore = (pointStandings[winnerId] ?? 0);
 
 		const winConfig = getWinTypeConfig(winType);
 		const flashColor = winConfig.theme === 'danger' ? '#EF4444' : '#F59E0B';
 
-		// Screen flash first (if any) — quick burst to set the tone
+		// Screen flash
 		if (winConfig.flash) {
 			this.queue.push({
 				kind: 'flash',
@@ -392,7 +323,7 @@ export class GameAnimationController {
 			}
 		});
 
-		// Confetti burst (slightly delayed so it follows the stamp impact)
+		// Confetti
 		if (winConfig.confetti) {
 			this.queue.push({ kind: 'delay', ms: 120 });
 			this.queue.push({
@@ -406,15 +337,9 @@ export class GameAnimationController {
 			});
 		}
 
-		// Hold stamp visible
 		this.queue.push({ kind: 'delay', ms: 800 });
 
 		// Points flying to score
-		const scoreAnchor = getAnchorRect('score', winnerId);
-		const to = scoreAnchor
-			? { x: scoreAnchor.left + scoreAnchor.width / 2, y: scoreAnchor.top + scoreAnchor.height / 2 }
-			: boardCenter;
-
 		this.queue.push({
 			kind: 'points-fly',
 			data: {
@@ -422,20 +347,20 @@ export class GameAnimationController {
 				label: `+${points}`,
 				fromX: boardCenter.x,
 				fromY: boardCenter.y + 40,
-				toX: to.x,
-				toY: to.y,
+				toX: scoreTarget.x,
+				toY: scoreTarget.y,
 				playerId: winnerId,
 				points
 			}
 		});
 
-		// Sparkle burst on the score chip as the points land
+		// Sparkle
 		this.queue.push({
 			kind: 'sparkle',
 			data: {
 				id: `sparkle-${Date.now()}`,
-				positionX: to.x,
-				positionY: to.y,
+				positionX: scoreTarget.x,
+				positionY: scoreTarget.y,
 				color: '#F59E0B'
 			}
 		});
@@ -443,17 +368,74 @@ export class GameAnimationController {
 		// Score update
 		this.queue.push({
 			kind: 'score-update',
-			data: {
-				playerId: winnerId,
-				oldScore,
-				newScore
-			}
+			data: { playerId: winnerId, oldScore, newScore }
 		});
+	}
+
+	/** Process events since last call. Used by external callers (GameArea). */
+	processEvent(
+		event: GameEvent,
+		players: { id: string; name: string }[],
+		getPositions?: (event: GameEvent) => { from: Vec2; to: Vec2 } | null
+	) {
+		this.enqueueEvent(event, players, getPositions);
+		this.runQueue();
+	}
+
+	// ── Private ─────────────────────────────────
+
+	private enqueueEvent(
+		event: GameEvent,
+		players: { id: string; name: string }[],
+		getPositions?: (event: GameEvent) => { from: Vec2; to: Vec2 } | null
+	) {
+		switch (event.type) {
+			case 'MOVE_PLAYED': {
+				const payload = event.payload as Record<string, unknown>;
+				const tileId = payload.tileId as string;
+				const playerId = payload.playerId as string;
+				const tile = payload.tile as Domino | undefined;
+				const side = payload.side as 'left' | 'right';
+
+				if (!tile || !playerId) return;
+
+				// Use externally-resolved positions, or fall back to default
+				const positions = getPositions?.(event);
+				const from = positions?.from ?? { x: 0, y: 0 };
+				const to = positions?.to ?? { x: 0, y: 0 };
+
+				this.enqueueMove(tileId, tile, playerId, side, from, to);
+				break;
+			}
+
+			case 'GAME_OVER': {
+				this.queue.push({ kind: 'delay', ms: 150 });
+				break;
+			}
+
+			case 'POINTS_AWARDED': {
+				const pid = event.payload.playerId as string;
+				const pts = event.payload.points as number;
+				if (!pid || !pts) return;
+
+				const positions = getPositions?.(event);
+				const from = positions?.from ?? { x: 0, y: 0 };
+				const to = positions?.to ?? { x: 0, y: 0 };
+
+				this.enqueuePointsAwarded(pid, pts, '', from, to);
+				break;
+			}
+
+			case 'ROUND_SCORED': {
+				// Handled via enqueueRoundResult for richer data
+				break;
+			}
+		}
 	}
 
 	// ── Queue runner ─────────────────────────────
 
-	private async runQueue() {
+	async runQueue() {
 		if (this.running || this.queue.length === 0) return;
 		this.running = true;
 		this.animState = 'playing';
@@ -506,6 +488,7 @@ export class GameAnimationController {
 
 		this.running = false;
 		this.animState = this.queue.length > 0 ? 'playing' : 'idle';
+		this.events.emit('queue:drain');
 	}
 
 	// ── Animation playback methods ───────────────
@@ -513,14 +496,12 @@ export class GameAnimationController {
 	private async playMove(anim: FlyingTileAnim, signal?: AbortSignal) {
 		const { tile, ...data } = anim;
 		this.animState = 'playing';
-
-		// Store data for the overlay (FlyingTileOverlay handles GSAP via card-animations.ts)
 		this.activeFlyingTiles = [...this.activeFlyingTiles, data];
+		this.events.emit('move:start', data);
 
-		// Wait for the flying animation to complete
 		await delay(anim.duration + 50, signal);
 
-		// Fire sparkle at landing spot
+		// Sparkle on landing
 		this.queue.push({
 			kind: 'sparkle',
 			data: {
@@ -531,20 +512,23 @@ export class GameAnimationController {
 			}
 		});
 
-		// Show the real board tile and remove overlay
 		this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds].filter((id) => id !== tile.id));
 		this.activeFlyingTiles = this.activeFlyingTiles.filter((d) => d.id !== data.id);
 		this.activeFlyingTileMeta.delete(data.id);
+		this.events.emit('move:end', data);
 	}
 
 	private playStamp(anim: StampAnimData) {
 		this.activeStamp = anim;
+		this.events.emit('stamp:start', anim);
 	}
 
 	private async playPointsFly(anim: FloatingPointsAnimData, signal?: AbortSignal) {
 		this.activeFloatingPoints = [...this.activeFloatingPoints, anim];
+		this.events.emit('points:start', anim);
 		await delay(600, signal);
 		this.activeFloatingPoints = this.activeFloatingPoints.filter((a) => a.id !== anim.id);
+		this.events.emit('points:end', anim);
 	}
 
 	private async playScoreUpdate(anim: ScoreUpdateAnimData, signal?: AbortSignal) {
@@ -573,51 +557,62 @@ export class GameAnimationController {
 
 	private async playConfetti(anim: ConfettiAnimData, signal?: AbortSignal) {
 		this.activeConfetti = [...this.activeConfetti, anim];
+		this.events.emit('confetti:start', anim);
 		const duration = anim.intensity === 'epic' ? 1700 : 1500;
 		await delay(duration, signal);
 		this.activeConfetti = this.activeConfetti.filter((a) => a.id !== anim.id);
+		this.events.emit('confetti:end', anim);
 	}
 
 	private async playFlash(anim: ScreenFlashAnimData, signal?: AbortSignal) {
 		this.activeScreenFlash = anim;
+		this.events.emit('flash:start', anim);
 		await delay(anim.duration, signal);
 		if (this.activeScreenFlash?.id === anim.id) {
 			this.activeScreenFlash = null;
 		}
+		this.events.emit('flash:end', anim);
 	}
 
 	private async playSparkle(anim: SparkleAnimData, signal?: AbortSignal) {
 		this.activeSparkles = [...this.activeSparkles, anim];
+		this.events.emit('sparkle:start', anim);
 		await delay(520, signal);
 		this.activeSparkles = this.activeSparkles.filter((a) => a.id !== anim.id);
+		this.events.emit('sparkle:end', anim);
 	}
 
 	private async playDeal(anim: DealAnimData, signal?: AbortSignal) {
 		this.animState = 'playing';
 		this.activeDeal = anim;
-		// Show for the duration of the deal animation (staggered cards)
+		this.events.emit('deal:start', anim);
 		const dealDuration = 250 + anim.tiles.length * 60;
 		await delay(dealDuration, signal);
 		if (this.activeDeal?.id === anim.id) {
 			this.activeDeal = null;
 		}
+		this.events.emit('deal:end', anim);
 	}
 
 	private async playPass(anim: PassAnimData, signal?: AbortSignal) {
 		this.animState = 'playing';
 		this.activePass = anim;
+		this.events.emit('pass:start', anim);
 		await delay(800, signal);
 		if (this.activePass?.id === anim.id) {
 			this.activePass = null;
 		}
+		this.events.emit('pass:end', anim);
 	}
 
 	private async playTurnHighlight(anim: TurnHighlightAnimData, signal?: AbortSignal) {
 		this.animState = 'playing';
 		this.activeTurnHighlight = anim;
+		this.events.emit('turn-highlight:start', anim);
 		await delay(700, signal);
 		if (this.activeTurnHighlight?.id === anim.id) {
 			this.activeTurnHighlight = null;
 		}
+		this.events.emit('turn-highlight:end', anim);
 	}
 }

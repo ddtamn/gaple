@@ -18,7 +18,7 @@
 	import MainPlayerHand from './MainPlayerHand.svelte';
 	import AnimationLayer from './animation/AnimationLayer.svelte';
 	import { GameAnimationController } from '$lib/animation/gameAnimationController.svelte';
-	import { registerAnchor } from '$lib/animation/domAnchors';
+
 
 	// PROPS DARI LOBI
 	let {
@@ -330,6 +330,83 @@
 	let prevTurnForHighlight = $state(-1);
 	/** Track whether deal animation has been triggered for the current round */
 	let dealTriggered = $state(false);
+	/** Pending move source positions (resolved from DOM before game state updates) */
+	let pendingMoveSources = new Map<string, { x: number; y: number }>();
+
+	// ── DOM position resolvers ──
+	// These are the ONLY places the animation system touches the DOM.
+	// Swap these implementations for PixiJS canvas coordinates.
+
+	const resolveBoardCenter = () => {
+		// Board center: viewport center (board is centered by CSS)
+		const boardEl = document.querySelector('[data-board-area]');
+		if (boardEl) {
+			const rect = boardEl.getBoundingClientRect();
+			return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+		}
+		return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+	};
+
+	const resolveHandCenter = (playerId: string): { x: number; y: number } => {
+		const el = document.querySelector(`[data-player-id="${playerId}"]`);
+		if (el) {
+			const rect = el.getBoundingClientRect();
+			return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+		}
+		return resolveBoardCenter();
+	};
+
+	const resolveAvatarCenter = (playerId: string): { x: number; y: number } => {
+		const el = document.querySelector(`[data-avatar-id="${playerId}"]`);
+		if (el) {
+			const rect = el.getBoundingClientRect();
+			return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+		}
+		return resolveHandCenter(playerId);
+	};
+
+	const resolveScoreTarget = (playerId: string): { x: number; y: number } => {
+		const el = document.querySelector(`[data-score-id="${playerId}"]`);
+		if (el) {
+			const rect = el.getBoundingClientRect();
+			return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+		}
+		return resolveBoardCenter();
+	};
+
+	const resolveTilePlaySource = (tileId: string, playerId: string): { x: number; y: number } | null => {
+		const pending = pendingMoveSources.get(tileId);
+		if (pending) return pending;
+		return resolveHandCenter(playerId);
+	};
+
+	const resolveTilePlayTarget = (tileId: string): { x: number; y: number } | null => {
+		const el = document.querySelector(`[data-board-tile-id="${tileId}"]`);
+		if (el) {
+			const rect = el.getBoundingClientRect();
+			return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+		}
+		return null;
+	};
+
+	/** Position resolver callback passed to controller for each event. */
+	function resolveEventPositions(event: { type: string; payload: Record<string, unknown> }) {
+		if (event.type === 'MOVE_PLAYED') {
+			const tileId = event.payload.tileId as string;
+			const playerId = event.payload.playerId as string;
+			const from = resolveTilePlaySource(tileId, playerId) ?? resolveBoardCenter();
+			const to = resolveTilePlayTarget(tileId) ?? resolveBoardCenter();
+			return { from, to };
+		}
+		if (event.type === 'POINTS_AWARDED') {
+			const pid = event.payload.playerId as string;
+			const from = resolveHandCenter(pid);
+			from.y -= 40;
+			const to = resolveScoreTarget(pid);
+			return { from, to };
+		}
+		return null;
+	}
 
 	// Init display scores on mount and when re-initializing
 	$effect(() => {
@@ -338,12 +415,12 @@
 		}
 	});
 
-	// Process events for animation
+	// Process events for animation (with DOM position resolution)
 	$effect(() => {
 		const events = currentGameState?.events;
 		const players = currentGameState?.players;
 		if (!events || !players) return;
-		animController.processEvents(events, players);
+		animController.processEvents(events, players, resolveEventPositions);
 	});
 
 	// Deal animation: trigger when a new round starts (events reset or first state)
@@ -352,6 +429,7 @@
 		const state = currentGameState;
 		if (!state) return;
 		const eventCount = state.events.length;
+		const boardCenter = resolveBoardCenter();
 		// Detect new round: events cleared (shrank) or first state with no events
 		if ((eventCount === 0 && dealTriggeredPrevEventCount > 0) ||
 		    (eventCount === 0 && !dealTriggered)) {
@@ -363,7 +441,8 @@
 					right: t.right,
 					id: t.id
 				}));
-				animController.enqueueDealAnimation(player.id, tiles);
+				const handPos = resolveHandCenter(player.id);
+				animController.enqueueDealAnimation(player.id, tiles, boardCenter, handPos);
 			}
 		} else if (eventCount > 0) {
 			dealTriggeredPrevEventCount = eventCount;
@@ -378,7 +457,8 @@
 		if (lastEvent && lastEvent.type === 'PLAYER_PASS') {
 			const pid = lastEvent.payload.playerId as string;
 			if (pid) {
-				animController.enqueuePassAnimation(pid);
+				const avatarPos = resolveAvatarCenter(pid);
+				animController.enqueuePassAnimation(pid, avatarPos);
 			}
 		}
 	});
@@ -393,9 +473,11 @@
 			const player = state.players[currentIdx];
 			const prevPlayer = prevIdx >= 0 ? state.players[prevIdx] : null;
 			if (player) {
+				const avatarPos = resolveAvatarCenter(player.id);
 				animController.enqueueTurnHighlight(
 					player.id,
-					prevPlayer?.id ?? null
+					prevPlayer?.id ?? null,
+					avatarPos
 				);
 			}
 		}
@@ -408,20 +490,27 @@
 		if (!result || !currentGameState) return;
 		const winner = currentGameState.players.find((p) => p.id === result.winnerId);
 		if (!winner) return;
+		const boardCenter = resolveBoardCenter();
+		const scoreTarget = resolveScoreTarget(result.winnerId);
 		animController.enqueueRoundResult(
 			result.winnerId,
 			winner.name,
 			result.points ?? 1,
 			result.winType ?? 'Normal',
-			currentGameState.pointStandings
+			currentGameState.pointStandings,
+			boardCenter,
+			scoreTarget
 		);
 	});
 
-	// Capture move source position for flying tile animation
+	// Capture move source position for flying tile animation (DOM-specific)
 	function captureMoveSource(tileId: string, el?: HTMLElement | null) {
-		const pos = animController.captureMoveSource(tileId, el);
-		if (pos) {
-			animController.storeMoveSource(tileId, pos);
+		if (el && document.contains(el)) {
+			const rect = el.getBoundingClientRect();
+			pendingMoveSources.set(tileId, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+		} else {
+			const handCenter = resolveHandCenter('main');
+			pendingMoveSources.set(tileId, handCenter);
 		}
 	}
 
@@ -1000,7 +1089,7 @@
 </div>
 
 	<!-- ── LAYER 4: Board Area (flex-1 = fills remaining space) ── -->
-	<div class="relative flex min-h-[140px] flex-1 items-center justify-center overflow-hidden md:min-h-0">
+	<div class="relative flex min-h-[140px] flex-1 items-center justify-center overflow-hidden md:min-h-0" data-board-area>
 		<div
 			class="flex h-full w-full items-center justify-center overflow-hidden"
 			bind:clientWidth={boardWidth}

@@ -18,8 +18,10 @@
 	import MainPlayerHand from './MainPlayerHand.svelte';
 	import AnimationLayer from './animation/AnimationLayer.svelte';
 	import { GameAnimationController } from '$lib/animation/gameAnimationController.svelte';
+	import PixiBoard from './pixi/PixiBoard.svelte';
 
-
+	/** When true, PixiJS renders board tiles and DOM tiles are hidden */
+	const usePixiForBoard = true;
 
 	// PROPS DARI LOBI
 	let {
@@ -789,16 +791,16 @@
 	<!-- Animation overlay layer (fixed, pointer-events-none) -->
 	<AnimationLayer controller={animController} />
 
-	<!-- PixiJS board renderer (disabled — enable for PixiJS migration testing) -->
-	<!--
-	<PixiBoard
-		controller={animController}
-		boardLayout={boardLayout}
-		camera={camera}
-		width={boardWidth}
-		height={boardHeight}
-	/>
-	-->
+	<!-- PixiJS board renderer (replaces DOM board tiles) -->
+	{#if usePixiForBoard}
+		<PixiBoard
+			controller={animController}
+			boardLayout={boardLayout}
+			camera={camera}
+			width={boardWidth}
+			height={boardHeight}
+		/>
+	{/if}
 
 	<!-- score anchors for animation targets -->
 	{#each currentGameState?.players ?? [] as p}
@@ -1128,12 +1130,12 @@
 					{#each boardLayout as tile (tile.id)}
 						{@const isVertical = tile.rotation % 180 !== 0}
 						{@const cssRotation = isVertical ? tile.rotation - 90 : tile.rotation}
-						{@const isHidden = animController.hiddenBoardTileIds.has(tile.id)}
-						<div
-							class="absolute transition-all duration-500 ease-out {isHidden ? 'invisible' : ''}"
-							style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
-							data-board-tile-id={tile.id}
-						>
+					{@const isHidden = animController.hiddenBoardTileIds.has(tile.id) || usePixiForBoard}
+					<div
+						class="absolute transition-all duration-500 ease-out {isHidden ? 'invisible' : ''}"
+						style="transform: translate({tile.x}px, {tile.y}px) rotate({cssRotation}deg);"
+						data-board-tile-id={tile.id}
+					>
 							<DominoTile {tile} {isVertical} />
 						</div>
 					{/each}

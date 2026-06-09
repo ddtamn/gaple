@@ -24,9 +24,6 @@
 	// Track the last board layout to detect changes
 	let prevLayoutJson = '';
 
-	// Store cleanup function from event bus subscription
-	let unsub: (() => void) | null = null;
-
 	onMount(async () => {
 		app = new Application();
 		await app.init({
@@ -42,18 +39,11 @@
 		app.stage.addChild(stage);
 		renderer = new PixiBoardRenderer(stage);
 
-		// Subscribe to animation events
-		unsub = controller.events.onAny((event) => {
-			renderer?.handleEvent(event);
-		});
-
-		// Initial sync (also handled by $effect below, but guard prevents duplicate)
+		// Initial sync
 		syncBoard();
 	});
 
 	onDestroy(() => {
-		unsub?.();
-		unsub = null;
 		if (renderer) {
 			renderer.destroy();
 			renderer = null;
@@ -76,21 +66,29 @@
 			right: t.right,
 			x: t.x,
 			y: t.y,
-			rotation: t.rotation % 180 !== 0 ? t.rotation - 90 : t.rotation,
+			rotation: t.rotation,
 			isBalak: t.isBalak
 		}));
-		renderer.syncBoard(tiles);
+		// Sync board with controller's hidden tile IDs (tiles mid-animation)
+		renderer.syncBoard(tiles, controller.hiddenBoardTileIds);
 	}
 
 	// Sync board layout reactively
 	$effect(() => {
+		// Re-sync on layout changes OR hidden tile ID changes
+		// Reading controller.hiddenBoardTileIds in this effect makes Svelte track it reactively
+		const _hidden = controller.hiddenBoardTileIds;
 		syncBoard();
 	});
 
-	// Sync camera transform
+	// Sync camera transform (centered in canvas + offset + scale)
 	$effect(() => {
 		if (!renderer) return;
-		renderer.setCamera(camera.scale, camera.offsetX, camera.offsetY);
+		// The board layout coordinates are relative to the board center.
+		// DOM renders: flexbox centers the board → scale → offset.
+		// PixiJS needs: position at canvas center + offset * scale, then scale.
+		const { scale, offsetX, offsetY } = camera;
+		renderer.setCamera(scale, offsetX, offsetY, width, height);
 	});
 
 	// Resize on dimension change

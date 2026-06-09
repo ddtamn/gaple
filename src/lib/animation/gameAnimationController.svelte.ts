@@ -11,6 +11,7 @@
 import type { Domino, GameEvent, GameState, PlayerId } from '../../engine/types';
 import { getAnchorRect, getAnchorCenter, getBoardCenter, registerAnchor } from './domAnchors';
 import { delay, tween, easeOutBack } from './tween';
+import { getWinTypeConfig, type ConfettiIntensity } from './winTypes';
 
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -54,6 +55,25 @@ export interface ScoreUpdateAnim {
 	newScore: number;
 }
 
+export interface ConfettiAnim {
+	id: string;
+	center: { x: number; y: number };
+	intensity: ConfettiIntensity;
+}
+
+export interface ScreenFlashAnim {
+	id: string;
+	color: string;
+	duration: number;
+	peak: number;
+}
+
+export interface SparkleAnim {
+	id: string;
+	position: { x: number; y: number };
+	color: string;
+}
+
 // ── Sequential animation runner ────────────────────────────────────
 
 type AnimationJob =
@@ -61,6 +81,9 @@ type AnimationJob =
 	| { kind: 'stamp'; data: StampAnim }
 	| { kind: 'points-fly'; data: FloatingPointsAnim }
 	| { kind: 'score-update'; data: ScoreUpdateAnim }
+	| { kind: 'confetti'; data: ConfettiAnim }
+	| { kind: 'flash'; data: ScreenFlashAnim }
+	| { kind: 'sparkle'; data: SparkleAnim }
 	| { kind: 'delay'; ms: number };
 
 export class GameAnimationController {
@@ -68,6 +91,9 @@ export class GameAnimationController {
 	activeFlyingTiles = $state<FlyingTileAnim[]>([]);
 	activeStamp = $state<StampAnim | null>(null);
 	activeFloatingPoints = $state<FloatingPointsAnim[]>([]);
+	activeConfetti = $state<ConfettiAnim[]>([]);
+	activeScreenFlash = $state<ScreenFlashAnim | null>(null);
+	activeSparkles = $state<SparkleAnim[]>([]);
 
 	/** Tracks which board tile IDs should be hidden (while flying animation plays) */
 	hiddenBoardTileIds = $state<Set<string>>(new Set());
@@ -101,6 +127,9 @@ export class GameAnimationController {
 		this.activeFlyingTiles = [];
 		this.activeStamp = null;
 		this.activeFloatingPoints = [];
+		this.activeConfetti = [];
+		this.activeScreenFlash = null;
+		this.activeSparkles = [];
 		this.hiddenBoardTileIds = new Set();
 		this._lastEnqueuedResultKey = '';
 	}
@@ -266,6 +295,22 @@ export class GameAnimationController {
 		const oldScore = this.displayScores[winnerId] ?? 0;
 		const newScore = (pointStandings[winnerId] ?? 0);
 
+		const winConfig = getWinTypeConfig(winType);
+		const flashColor = winConfig.theme === 'danger' ? '#EF4444' : '#F59E0B';
+
+		// Screen flash first (if any) — quick burst to set the tone
+		if (winConfig.flash) {
+			this.queue.push({
+				kind: 'flash',
+				data: {
+					id: `flash-${Date.now()}`,
+					color: flashColor,
+					duration: 420,
+					peak: 0.55
+				}
+			});
+		}
+
 		// Stamp
 		this.queue.push({
 			kind: 'stamp',
@@ -278,6 +323,19 @@ export class GameAnimationController {
 				center: boardCenter
 			}
 		});
+
+		// Confetti burst (slightly delayed so it follows the stamp impact)
+		if (winConfig.confetti) {
+			this.queue.push({ kind: 'delay', ms: 120 });
+			this.queue.push({
+				kind: 'confetti',
+				data: {
+					id: `confetti-${Date.now()}`,
+					center: boardCenter,
+					intensity: winConfig.intensity === 'epic' ? 'epic' : 'normal'
+				}
+			});
+		}
 
 		// Hold stamp visible
 		this.queue.push({ kind: 'delay', ms: 800 });
@@ -297,6 +355,16 @@ export class GameAnimationController {
 				to,
 				playerId: winnerId,
 				points
+			}
+		});
+
+		// Sparkle burst on the score chip as the points land
+		this.queue.push({
+			kind: 'sparkle',
+			data: {
+				id: `sparkle-${Date.now()}`,
+				position: to,
+				color: '#F59E0B'
 			}
 		});
 
@@ -329,24 +397,32 @@ export class GameAnimationController {
 		while (this.queue.length > 0 && !signal?.aborted) {
 			const job = this.queue.shift()!;
 
-			try {
-			switch (job.kind) {
+			try {			switch (job.kind) {
 				case 'move':
 					await this.playMove(job.data, signal);
 					break;
 				case 'stamp':
-						this.playStamp(job.data);
-						break;
-					case 'points-fly':
-						await this.playPointsFly(job.data, signal);
-						break;
-					case 'score-update':
-						await this.playScoreUpdate(job.data, signal);
-						break;
-					case 'delay':
-						await delay(job.ms, signal);
-						break;
-				}
+					this.playStamp(job.data);
+					break;
+				case 'points-fly':
+					await this.playPointsFly(job.data, signal);
+					break;
+				case 'score-update':
+					await this.playScoreUpdate(job.data, signal);
+					break;
+				case 'confetti':
+					await this.playConfetti(job.data, signal);
+					break;
+				case 'flash':
+					await this.playFlash(job.data, signal);
+					break;
+				case 'sparkle':
+					await this.playSparkle(job.data, signal);
+					break;
+				case 'delay':
+					await delay(job.ms, signal);
+					break;
+			}
 			} catch {
 				// Ignore errors from aborted animations
 			}
@@ -402,5 +478,26 @@ export class GameAnimationController {
 			},
 			signal
 		);
+	}
+
+	private async playConfetti(anim: ConfettiAnim, signal?: AbortSignal) {
+		this.activeConfetti = [...this.activeConfetti, anim];
+		const duration = anim.intensity === 'epic' ? 1700 : 1500;
+		await delay(duration, signal);
+		this.activeConfetti = this.activeConfetti.filter((a) => a.id !== anim.id);
+	}
+
+	private async playFlash(anim: ScreenFlashAnim, signal?: AbortSignal) {
+		this.activeScreenFlash = anim;
+		await delay(anim.duration, signal);
+		if (this.activeScreenFlash?.id === anim.id) {
+			this.activeScreenFlash = null;
+		}
+	}
+
+	private async playSparkle(anim: SparkleAnim, signal?: AbortSignal) {
+		this.activeSparkles = [...this.activeSparkles, anim];
+		await delay(520, signal);
+		this.activeSparkles = this.activeSparkles.filter((a) => a.id !== anim.id);
 	}
 }

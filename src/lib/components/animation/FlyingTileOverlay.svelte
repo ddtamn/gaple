@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DominoTile from '../DominoTile.svelte';
 	import { onMount } from 'svelte';
+	import { runAnimation, easeOutCubic } from '$lib/animation/tween';
 
 	interface Props {
 		tile: { left: number; right: number };
@@ -16,36 +17,30 @@
 
 	let x = $state(fromX);
 	let y = $state(fromY);
-	let rot = $state(rotation);
-	let scale = $state(1.05);
+	let rot = $state(rotation * 1.5);
+	let scale = $state(1.15);
 	let opacity = $state(0);
 
-	const startTime = performance.now();
+	/** Vertical arc height (px) — gives the tile a "thrown" feel. */
+	const ARC_HEIGHT = 60;
+	/** Initial rotation multiplier — tile tilts more at start, settles on land. */
+	const TILT_OVERSHOOT = 1.6;
 
 	onMount(() => {
-		requestAnimationFrame(function tick(now) {
-			const elapsed = now - startTime;
-			const progress = Math.min(elapsed / duration, 1);
-
-			// Ease-out cubic
-			const ease = 1 - Math.pow(1 - progress, 3);
-
-			x = fromX + (toX - fromX) * ease;
-			y = fromY + (toY - fromY) * ease - Math.sin(progress * Math.PI) * 20; // slight arc
-			rot = rotation * (1 - ease);
-			scale = 1.05 - 0.05 * ease;
-			opacity = Math.min(1, progress * 3);
-
-			if (progress < 1) {
-				requestAnimationFrame(tick);
-			} else {
-				x = toX;
-				y = toY;
-				rot = 0;
-				scale = 1;
-				opacity = 1;
+		const controller = new AbortController();
+		runAnimation({
+			duration,
+			easing: easeOutCubic,
+			signal: controller.signal,
+			onUpdate: (p) => {
+				x = fromX + (toX - fromX) * p;
+				y = fromY + (toY - fromY) * p - Math.sin(p * Math.PI) * ARC_HEIGHT;
+				rot = rotation * TILT_OVERSHOOT * (1 - p);
+				scale = 1.15 - 0.15 * p;
+				opacity = Math.min(1, p * 4);
 			}
 		});
+		return () => controller.abort();
 	});
 </script>
 

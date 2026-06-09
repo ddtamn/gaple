@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { runAnimation, easeOutCubic } from '$lib/animation/tween';
 
 	interface Props {
 		label: string;
@@ -16,30 +17,20 @@
 	let scale = $state(1.3);
 	let opacity = $state(0);
 
-	const startTime = performance.now();
-	const DURATION = 500;
-
 	onMount(() => {
-		requestAnimationFrame(function tick(now) {
-			const elapsed = now - startTime;
-			const progress = Math.min(elapsed / DURATION, 1);
-
-			const ease = 1 - Math.pow(1 - progress, 3);
-
-			x = fromX + (toX - fromX) * ease;
-			y = fromY + (toY - fromY) * ease;
-			scale = 1.3 - 0.5 * ease;
-			opacity = progress < 0.15 ? progress / 0.15 : progress > 0.85 ? (1 - progress) / 0.15 : 1;
-
-			if (progress < 1) {
-				requestAnimationFrame(tick);
-			} else {
-				x = toX;
-				y = toY;
-				scale = 0.8;
-				opacity = 0;
+		const controller = new AbortController();
+		runAnimation({
+			duration: 500,
+			easing: easeOutCubic,
+			signal: controller.signal,
+			onUpdate: (p) => {
+				x = fromX + (toX - fromX) * p;
+				y = fromY + (toY - fromY) * p;
+				scale = 1.3 - 0.5 * p;
+				opacity = p < 0.15 ? p / 0.15 : p > 0.85 ? (1 - p) / 0.15 : 1;
 			}
 		});
+		return () => controller.abort();
 	});
 </script>
 

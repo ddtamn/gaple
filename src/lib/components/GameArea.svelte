@@ -642,7 +642,7 @@
 	<!-- score anchors for animation targets -->
 	{#each currentGameState?.players ?? [] as p}
 		<div
-			data-score-anchor={p.id}
+			data-score-id={p.id}
 			class="pointer-events-none fixed z-0 opacity-0"
 			style="left:0; top:0; width:1px; height:1px;"
 		></div>
@@ -1043,8 +1043,8 @@
 				{#if mainPlayer}					<!-- Main player avatar + info panel (PASS, countdown, score) -->
 					{@const mainCountdown = getCountdownForPlayer(myPlayerIndex)}
 					{@const mainPassTs = getPassTimestamp(myPlayerIndex)}
-					{@const mainPassHintValues = getPassHintValues(myPlayerIndex)}
-					{@const mainScore = currentGameState.pointStandings[mainPlayer.id] || 0}
+				{@const mainPassHintValues = getPassHintValues(myPlayerIndex)}
+				{@const mainScore = animController.displayScores[mainPlayer.id] ?? (currentGameState.pointStandings[mainPlayer.id] || 0)}
 					<div class="mb-2 flex items-center justify-center gap-3">
 						<!-- Avatar box -->
 						<div class="flex items-center gap-2 rounded-lg border border-stone-700 bg-surface px-3 py-1.5">
@@ -1108,7 +1108,7 @@
 						/>
 						<!-- score anchor for main player -->
 						<div
-							data-score-anchor={mainPlayer.id}
+							data-score-id={mainPlayer.id}
 							class="pointer-events-none fixed z-0 opacity-0"
 							style="left:0; top:0; width:1px; height:1px;"
 						></div>

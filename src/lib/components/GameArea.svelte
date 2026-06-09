@@ -18,7 +18,7 @@
 	import MainPlayerHand from './MainPlayerHand.svelte';
 	import AnimationLayer from './animation/AnimationLayer.svelte';
 	import { GameAnimationController } from '$lib/animation/gameAnimationController.svelte';
-	import PixiBoard from './pixi/PixiBoard.svelte';
+
 
 
 	// PROPS DARI LOBI
@@ -789,7 +789,8 @@
 	<!-- Animation overlay layer (fixed, pointer-events-none) -->
 	<AnimationLayer controller={animController} />
 
-	<!-- PixiJS board renderer (canvas overlay, pointer-events-none) -->
+	<!-- PixiJS board renderer (disabled — enable for PixiJS migration testing) -->
+	<!--
 	<PixiBoard
 		controller={animController}
 		boardLayout={boardLayout}
@@ -797,6 +798,7 @@
 		width={boardWidth}
 		height={boardHeight}
 	/>
+	-->
 
 	<!-- score anchors for animation targets -->
 	{#each currentGameState?.players ?? [] as p}

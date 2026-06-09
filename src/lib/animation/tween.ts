@@ -95,3 +95,77 @@ export function delay(ms: number, abortSignal?: AbortSignal): Promise<void> {
 		}
 	});
 }
+
+export interface RunAnimationConfig {
+	/** Total duration in ms */
+	duration: number;
+	/** Easing applied to linear progress (0..1) before being passed to onUpdate */
+	easing?: (t: number) => number;
+	/** Called every frame with eased progress in [0, 1] */
+	onUpdate: (progress: number) => void;
+	/** Called once when progress reaches 1 (or animation is aborted) */
+	onComplete?: () => void;
+	/** When triggered, animation snaps to progress=1 and resolves */
+	abortSignal?: AbortSignal;
+}
+
+/**
+ * Run a progress-based animation. Like tween() but exposes a single eased
+ * progress value (0..1) instead of interpolating a single number. This lets
+ * overlays animate multiple properties (x, y, scale, rotation, opacity) with
+ * one shared timeline and one chosen easing.
+ *
+ * Resolves when the animation completes naturally or is aborted. If aborted,
+ * onUpdate is called once with progress=1 and onComplete is invoked.
+ */
+export function runAnimation(config: RunAnimationConfig): Promise<void> {
+	return new Promise((resolve) => {
+		if (config.abortSignal?.aborted) {
+			config.onUpdate(1);
+			config.onComplete?.();
+			resolve();
+			return;
+		}
+
+		const easing = config.easing ?? easeOutCubic;
+		const startTime = performance.now();
+		let rafId = 0;
+		let done = false;
+
+		const finish = () => {
+			if (done) return;
+			done = true;
+			cancelAnimationFrame(rafId);
+			config.onUpdate(1);
+			config.onComplete?.();
+			resolve();
+		};
+
+		if (config.abortSignal) {
+			config.abortSignal.addEventListener('abort', finish, { once: true });
+		}
+
+		function tick(now: number) {
+			if (config.abortSignal?.aborted) {
+				finish();
+				return;
+			}
+			const elapsed = now - startTime;
+			const progress = Math.min(elapsed / config.duration, 1);
+			const easedProgress = easing(progress);
+
+			config.onUpdate(easedProgress);
+
+			if (progress < 1) {
+				rafId = requestAnimationFrame(tick);
+			} else {
+				finish();
+			}
+		}
+
+		rafId = requestAnimationFrame(tick);
+	});
+}
+
+/** A reusable no-op easing (linear) for callers that want raw progress. */
+export const linear = (t: number): number => t;

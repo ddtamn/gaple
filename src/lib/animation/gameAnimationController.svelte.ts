@@ -12,6 +12,7 @@ import type { Domino, GameEvent, GameState, PlayerId } from '../../engine/types'
 import { getAnchorRect, getAnchorCenter, getBoardCenter, registerAnchor } from './domAnchors';
 import { delay, tween, easeOutBack } from './tween';
 
+
 // ── Types ──────────────────────────────────────────────────────────
 
 export interface FlyingTileAnim {
@@ -47,13 +48,6 @@ export interface FloatingPointsAnim {
 	points: number;
 }
 
-export interface PassAnim {
-	id: string;
-	playerId: string;
-	/** Center of the player area */
-	position: { x: number; y: number };
-}
-
 export interface ScoreUpdateAnim {
 	playerId: string;
 	oldScore: number;
@@ -64,7 +58,6 @@ export interface ScoreUpdateAnim {
 
 type AnimationJob =
 	| { kind: 'move'; data: FlyingTileAnim }
-	| { kind: 'pass'; data: PassAnim }
 	| { kind: 'stamp'; data: StampAnim }
 	| { kind: 'points-fly'; data: FloatingPointsAnim }
 	| { kind: 'score-update'; data: ScoreUpdateAnim }
@@ -75,7 +68,6 @@ export class GameAnimationController {
 	activeFlyingTiles = $state<FlyingTileAnim[]>([]);
 	activeStamp = $state<StampAnim | null>(null);
 	activeFloatingPoints = $state<FloatingPointsAnim[]>([]);
-	activePassEffects = $state<PassAnim[]>([]);
 
 	/** Tracks which board tile IDs should be hidden (while flying animation plays) */
 	hiddenBoardTileIds = $state<Set<string>>(new Set());
@@ -109,7 +101,6 @@ export class GameAnimationController {
 		this.activeFlyingTiles = [];
 		this.activeStamp = null;
 		this.activeFloatingPoints = [];
-		this.activePassEffects = [];
 		this.hiddenBoardTileIds = new Set();
 		this._lastEnqueuedResultKey = '';
 	}
@@ -221,22 +212,6 @@ export class GameAnimationController {
 						playerId,
 						side,
 						duration
-					}
-				});
-				break;
-			}
-
-			case 'PLAYER_PASS': {
-				const pid = event.payload.playerId as string;
-				if (!pid) return;
-
-				const handCenter = getAnchorCenter('hand-area', pid) ?? getBoardCenter();
-				this.queue.push({
-					kind: 'pass',
-					data: {
-						id: `pass-${pid}-${event.timestamp}`,
-						playerId: pid,
-						position: handCenter
 					}
 				});
 				break;
@@ -355,14 +330,11 @@ export class GameAnimationController {
 			const job = this.queue.shift()!;
 
 			try {
-				switch (job.kind) {
-					case 'move':
-						await this.playMove(job.data, signal);
-						break;
-					case 'pass':
-						await this.playPass(job.data, signal);
-						break;
-					case 'stamp':
+			switch (job.kind) {
+				case 'move':
+					await this.playMove(job.data, signal);
+					break;
+				case 'stamp':
 						this.playStamp(job.data);
 						break;
 					case 'points-fly':
@@ -393,12 +365,6 @@ export class GameAnimationController {
 		// Remove overlay and show real board tile
 		this.activeFlyingTiles = this.activeFlyingTiles.filter((a) => a.id !== anim.id);
 		this.hiddenBoardTileIds = new Set([...this.hiddenBoardTileIds].filter((id) => id !== anim.id));
-	}
-
-	private async playPass(anim: PassAnim, signal?: AbortSignal) {
-		this.activePassEffects = [...this.activePassEffects, anim];
-		await delay(600, signal);
-		this.activePassEffects = this.activePassEffects.filter((a) => a.id !== anim.id);
 	}
 
 	private playStamp(anim: StampAnim) {

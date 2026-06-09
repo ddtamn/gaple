@@ -10,10 +10,9 @@
 		toY: number;
 		rotation: number;
 		duration: number;
-		onland: () => void;
 	}
 
-	let { tile, fromX, fromY, toX, toY, rotation, duration, onland }: Props = $props();
+	let { tile, fromX, fromY, toX, toY, rotation, duration }: Props = $props();
 
 	let x = $state(fromX);
 	let y = $state(fromY);
@@ -45,7 +44,6 @@
 				rot = 0;
 				scale = 1;
 				opacity = 1;
-				setTimeout(onland, 50);
 			}
 		});
 	});

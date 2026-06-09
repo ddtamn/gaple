@@ -6,6 +6,10 @@ import type {
 	ClientMessage
 } from './types';
 
+// ── Constants ────────────────────────────────────────────────────────
+
+const PARTYKIT_PROJECT = 'gaple-party';
+
 // ── Reactive State ────────────────────────────────────────────────────
 
 let partySocket: PartySocket | null = $state(null);
@@ -77,31 +81,38 @@ function connect(
 	if (apiUrl) query.apiUrl = apiUrl;
 	if (profileId) query.profileId = profileId;
 
-	if (partySocket) {
-		partySocket.onopen = () => {
-			connectionState = 'connected';
-		};
+	// Create new PartySocket connection using the object config API
+	// Vite proxies /parties/* WebSocket connections to PartyKit on :1999
+	partySocket = new PartySocket({
+		host,
+		party: PARTYKIT_PROJECT,
+		room: roomIdInput,
+		query
+	});
 
-		partySocket.onclose = () => {
-			connectionState = 'disconnected';
-		};
+	partySocket.onopen = () => {
+		connectionState = 'connected';
+	};
 
-		partySocket.onerror = (event: Event) => {
-			const errorMsg = 'Connection failed';
-			console.error('[PartySocket]', errorMsg, event);
-			lastError = errorMsg;
-			connectionState = 'disconnected';
-		};
+	partySocket.onclose = () => {
+		connectionState = 'disconnected';
+	};
 
-		partySocket.onmessage = (event: MessageEvent) => {
-			try {
-				const msg = JSON.parse(event.data as string) as ServerMessage;
-				handleServerMessage(msg);
-			} catch (e) {
-				console.error('Failed to parse message:', e);
-			}
-		};
-	}
+	partySocket.onerror = (event: Event) => {
+		const errorMsg = 'Connection failed';
+		console.error('[PartySocket]', errorMsg, event);
+		lastError = errorMsg;
+		connectionState = 'disconnected';
+	};
+
+	partySocket.onmessage = (event: MessageEvent) => {
+		try {
+			const msg = JSON.parse(event.data as string) as ServerMessage;
+			handleServerMessage(msg);
+		} catch (e) {
+			console.error('Failed to parse message:', e);
+		}
+	};
 }
 
 function disconnect() {

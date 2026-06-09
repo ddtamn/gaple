@@ -7,10 +7,9 @@
 		fromY: number;
 		toX: number;
 		toY: number;
-		onland: () => void;
 	}
 
-	let { label, fromX, fromY, toX, toY, onland }: Props = $props();
+	let { label, fromX, fromY, toX, toY }: Props = $props();
 
 	let x = $state(fromX);
 	let y = $state(fromY);
@@ -39,7 +38,6 @@
 				y = toY;
 				scale = 0.8;
 				opacity = 0;
-				onland();
 			}
 		});
 	});

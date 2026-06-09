@@ -7,10 +7,9 @@
 		winnerName: string;
 		centerX: number;
 		centerY: number;
-		onstamped: () => void;
 	}
 
-	let { label, points, winnerName, centerX, centerY, onstamped }: Props = $props();
+	let { label, points, winnerName, centerX, centerY }: Props = $props();
 
 	let scale = $state(0);
 	let rotate = $state(-12);
@@ -46,7 +45,6 @@
 				rotate = 0;
 				blur = 0;
 				opacity = 1;
-				onstamped();
 			}
 		});
 	});
